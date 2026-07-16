@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+/* VISiOnRoute görsel kimliği: güvenlik, hareketlilik, operasyonel netlik.
+   Koyu lacivert zemin üzerinde yüksek kontrast; amber = uyarı, kırmızı = kritik. */
+@theme {
+  --color-brand-50: #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-500: #2563eb;
+  --color-brand-600: #1d4ed8;
+  --color-brand-700: #1e40af;
+  --color-brand-900: #172554;
+  --color-ink-900: #0b1220;
+  --color-ink-800: #101a2e;
+  --color-ink-700: #1a2740;
+  --color-risk-low: #16a34a;
+  --color-risk-medium: #d97706;
+  --color-risk-high: #dc2626;
+  --color-risk-critical: #7f1d1d;
+  --font-sans: "Inter", "Segoe UI", system-ui, sans-serif;
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}

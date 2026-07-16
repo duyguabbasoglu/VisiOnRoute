@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Node
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+.pnpm-store/
+
+# Environment & secrets — never commit real credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.dev/
+
+# Local data
+.localdata/
+*.db
+*.sqlite3
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.auto.tfvars.example
+.terraform.lock.hcl
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Generated reports
+playwright-report/
+test-results/
