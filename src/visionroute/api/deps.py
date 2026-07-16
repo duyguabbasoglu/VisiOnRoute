@@ -1,0 +1,148 @@
+"""FastAPI dependencies: sessions, authentication, authorization.
+
+Two session dependencies exist on purpose (ADR-0010):
+
+- ``PlatformSession`` — RLS bypass, only for auth flows and platform admin.
+- ``TenantSession``  — tenant-bound; RLS restricts rows to the caller's
+  organization even if application-level filtering has a bug.
+"""
+
+from __future__ import annotations
+
+import ipaddress
+import uuid
+from collections.abc import AsyncIterator
+from typing import Annotated, Any
+
+from fastapi import Depends, Request
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from visionroute.api.errors import ForbiddenError, UnauthorizedError
+from visionroute.application.context import RequestContext
+from visionroute.config.settings import Settings
+from visionroute.domain.permissions import Permission, RoleKey
+from visionroute.infrastructure.db.tenancy import set_rls_bypass, set_tenant
+from visionroute.infrastructure.security.tokens import JwtService, TokenError
+
+
+def get_app_settings(request: Request) -> Settings:
+    settings: Settings = request.app.state.settings
+    return settings
+
+
+def get_jwt_service(request: Request) -> JwtService:
+    service: JwtService | None = getattr(request.app.state, "jwt_service", None)
+    if service is None:
+        raise UnauthorizedError(
+            "Kimlik servisi yapılandırılmamış (JWT anahtarları eksik).",
+            code="AUTH_NOT_CONFIGURED",
+            status_code=503,
+        )
+    return service
+
+
+def _session_factory(request: Request) -> async_sessionmaker[AsyncSession]:
+    factory: async_sessionmaker[AsyncSession] = request.app.state.db_session_factory
+    return factory
+
+
+async def _open_session(request: Request) -> AsyncIterator[AsyncSession]:
+    async with _session_factory(request)() as session:
+        try:
+            yield session
+            await session.commit()
+        except BaseException:
+            await session.rollback()
+            raise
+
+
+def _client_ip(request: Request) -> str | None:
+    """Return the peer address only if it is a real IP (INET column safety)."""
+    if request.client is None:
+        return None
+    try:
+        return str(ipaddress.ip_address(request.client.host))
+    except ValueError:
+        return None
+
+
+def get_current_context(
+    request: Request,
+    jwt_service: Annotated[JwtService, Depends(get_jwt_service)],
+) -> RequestContext:
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise UnauthorizedError
+    try:
+        claims = jwt_service.verify_access_token(auth_header.removeprefix("Bearer "))
+    except TokenError as exc:
+        raise UnauthorizedError from exc
+    return RequestContext(
+        user_id=claims.user_id,
+        organization_id=claims.organization_id,
+        role=RoleKey(claims.role) if claims.role else None,
+        is_platform_admin=claims.is_platform_admin,
+        actor_label=str(claims.user_id),
+        request_id=getattr(request.state, "request_id", None),
+        ip_address=_client_ip(request),
+        user_agent=request.headers.get("User-Agent"),
+    )
+
+
+def get_anonymous_context(request: Request) -> RequestContext:
+    return RequestContext(
+        user_id=None,
+        organization_id=None,
+        role=None,
+        is_platform_admin=False,
+        actor_label="anonymous",
+        request_id=getattr(request.state, "request_id", None),
+        ip_address=_client_ip(request),
+        user_agent=request.headers.get("User-Agent"),
+    )
+
+
+CurrentContext = Annotated[RequestContext, Depends(get_current_context)]
+AnonymousContext = Annotated[RequestContext, Depends(get_anonymous_context)]
+
+
+async def get_platform_session(request: Request) -> AsyncIterator[AsyncSession]:
+    """RLS-bypassing session. Restrict usage to auth and platform-admin paths."""
+    async for session in _open_session(request):
+        await set_rls_bypass(session)
+        yield session
+
+
+async def get_tenant_session(request: Request, ctx: CurrentContext) -> AsyncIterator[AsyncSession]:
+    if ctx.organization_id is None:
+        raise ForbiddenError("Bu uç nokta bir organizasyon bağlamı gerektirir.")
+    async for session in _open_session(request):
+        await set_tenant(session, ctx.organization_id)
+        yield session
+
+
+PlatformSession = Annotated[AsyncSession, Depends(get_platform_session)]
+TenantSession = Annotated[AsyncSession, Depends(get_tenant_session)]
+
+
+def require_permission(permission: Permission) -> Any:
+    """Dependency factory: 403 unless the caller holds ``permission``."""
+
+    def dependency(ctx: CurrentContext) -> RequestContext:
+        if not ctx.has_permission(permission):
+            raise ForbiddenError
+        return ctx
+
+    return Depends(dependency)
+
+
+def require_platform_admin(ctx: CurrentContext) -> RequestContext:
+    if not ctx.is_platform_admin:
+        raise ForbiddenError
+    return ctx
+
+
+def require_tenant_id(ctx: RequestContext) -> uuid.UUID:
+    if ctx.organization_id is None:
+        raise ForbiddenError("Bu uç nokta bir organizasyon bağlamı gerektirir.")
+    return ctx.organization_id

@@ -1,0 +1,47 @@
+# İlerleme Kaydı / Progress Log
+
+Her kilometre taşı kapanışında güncellenir. Tarihler UTC.
+
+## 2026-07-16 — Oturum başlangıcı
+
+- Depo boş bulundu; `git init` yapıldı.
+- Ortam envanteri: Python 3.13.9, Poetry 2.3.2, Node 23, pnpm 9.15,
+  PostgreSQL 17 (yerel, PostGIS Homebrew ile kuruluyor), Docker **yok**,
+  Redis Homebrew ile kuruluyor, Terraform CLI yok.
+- M1 başlatıldı.
+
+## 2026-07-16 — M1 (Temel) tamamlandı
+
+- Depo yapısı, `AGENTS.md`, `CLAUDE.md`, planlama/güvenlik dokümanları oluşturuldu.
+- Poetry + pnpm çalışma alanları; Ruff, mypy (strict), import-linter, bandit,
+  pip-audit, pre-commit, gitleaks yapılandırıldı.
+- FastAPI uygulama fabrikası: Türkçe hata zarfı, korelasyon kimliği, güvenlik
+  başlıkları, liveness/readiness uçları (yapılandırma sızdırmaz).
+- `docker-compose.yml` + üretim Dockerfile'ları; Docker yoksa yerel PostgreSQL 17
+  (+PostGIS) / Redis'e düşen `make db-up`.
+- CI iş akışı (backend + frontend + gizli tarama + terraform validate), üçüncü
+  taraf eylemleri SHA ile sabitlendi.
+- **Kalite kapısı**: ruff ✓ mypy ✓ import-linter (2/2) ✓ 13 birim testi ✓
+- Frontend: Next.js 15 strict TS, Tailwind v4; `pnpm typecheck/lint/build` ✓
+
+## 2026-07-16 — M2 (Kimlik & kiracılık) tamamlandı
+
+- Tablolar: organizations, organization_settings, users, roles, permissions,
+  role_permissions, memberships, invitations, sessions, api_clients, api_tokens,
+  audit_logs, outbox_events, idempotency_keys, background_jobs. İlk Alembic
+  revizyonu; up→down→up doğrulandı.
+- RBAC: 28 izin, 10 kiracı rolü; katalog `visionroute.domain.permissions`'ta
+  tek doğruluk kaynağı, migration'a seed edildi, entegrasyon testi eşleşmeyi doğrular.
+- Kimlik doğrulama: Argon2id parola, RS256 JWT (kısa ömürlü), refresh token
+  rotasyonu + yeniden kullanım tespiti (aile iptali), hesap kilitleme,
+  HttpOnly+SameSite çerez.
+- Çok kiracılılık: uygulama katmanı + PostgreSQL RLS (`app.tenant_id`),
+  çapraz kiracı ve WHERE'siz sorgu testleriyle doğrulandı.
+- Denetim kaydı: append-only, DB trigger'ı UPDATE/DELETE reddeder (test edildi).
+- `visionroute admin bootstrap`: tek seferlik, mevcut yöneticiyi ezmeyi reddeder,
+  parolayı yazdırmaz (uçtan uca test edildi).
+- **Kalite kapısı**: ruff ✓ mypy ✓ import-linter ✓ bandit (0 yüksek/orta) ✓
+  39 test (birim + entegrasyon + güvenlik) ✓
+- Güvenlik testleri: JWT algoritma karmaşası (elle üretilmiş HS256), alg=none,
+  süresi dolmuş/yanlış audience/eksik claim, IDOR, SQL enjeksiyon dizeleri,
+  aşırı büyük gövde.

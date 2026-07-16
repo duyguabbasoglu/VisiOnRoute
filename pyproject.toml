@@ -1,0 +1,145 @@
+[project]
+name = "visionroute"
+version = "0.1.0"
+description = "VISiOnRoute — Türkçe ulaşım güvenliği platformu (transportation-safety SaaS)"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+license = { text = "Proprietary" }
+dependencies = [
+    "fastapi (>=0.115,<1.0)",
+    "uvicorn[standard] (>=0.34,<1.0)",
+    "pydantic (>=2.10,<3.0)",
+    "pydantic-settings (>=2.7,<3.0)",
+    "sqlalchemy[asyncio] (>=2.0.36,<2.1)",
+    "alembic (>=1.14,<2.0)",
+    "asyncpg (>=0.30,<1.0)",
+    "argon2-cffi (>=23.1,<24.0)",
+    "pyjwt[crypto] (>=2.10,<3.0)",
+    "cryptography (>=44.0)",
+    "structlog (>=24.4,<26.0)",
+    "httpx (>=0.28,<1.0)",
+    "typer (>=0.15,<1.0)",
+    "orjson (>=3.10,<4.0)",
+    "redis (>=5.2,<6.0)",
+    "email-validator (>=2.2,<3.0)",
+    "python-multipart (>=0.0.20,<0.1)",
+    "greenlet (>=3.1,<4.0)",
+]
+
+[project.scripts]
+visionroute = "visionroute.cli.main:app"
+
+[tool.poetry]
+packages = [{ include = "visionroute", from = "src" }]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3"
+pytest-asyncio = "^0.25"
+pytest-cov = "^6.0"
+ruff = "^0.9"
+mypy = "^1.14"
+import-linter = "^2.1"
+bandit = "^1.8"
+pip-audit = "^2.7"
+pre-commit = "^4.0"
+
+[build-system]
+requires = ["poetry-core>=2.0"]
+build-backend = "poetry.core.masonry.api"
+
+# ---------------------------------------------------------------- ruff
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "UP",       # pyupgrade
+    "B",        # bugbear
+    "C4",       # comprehensions
+    "SIM",      # simplify
+    "RUF",      # ruff-specific
+    "ASYNC",    # async pitfalls
+    "S",        # bandit-style security
+    "DTZ",      # naive datetime usage
+]
+ignore = [
+    "S104",    # binding 0.0.0.0 is intended inside containers
+    "RUF001",  # Turkish product language: ı/İ/… are not "ambiguous unicode"
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Header",
+    "fastapi.Body",
+    "typer.Option",
+    "typer.Argument",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "S107", "DTZ001"]  # asserts & literal test credentials
+"src/visionroute/infrastructure/db/migrations/**" = ["I001"]
+
+# ---------------------------------------------------------------- mypy
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unreachable = true
+show_error_codes = true
+mypy_path = "src"
+packages = ["visionroute"]
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+
+# ---------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+markers = [
+    "integration: requires local PostgreSQL (make db-up)",
+    "security: security regression tests",
+]
+filterwarnings = ["error::RuntimeWarning"]
+
+[tool.coverage.run]
+source = ["src/visionroute"]
+omit = ["src/visionroute/infrastructure/db/migrations/*"]
+
+# ---------------------------------------------------------------- import-linter
+[tool.importlinter]
+root_package = "visionroute"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Layered architecture"
+type = "layers"
+layers = [
+    "visionroute.api | visionroute.worker | visionroute.scheduler | visionroute.cli",
+    "visionroute.application",
+    "visionroute.infrastructure",
+    "visionroute.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "Domain stays framework-free"
+type = "forbidden"
+source_modules = ["visionroute.domain"]
+forbidden_modules = ["fastapi", "sqlalchemy", "alembic", "redis", "httpx", "boto3"]
+
+# ---------------------------------------------------------------- bandit
+[tool.bandit]
+exclude_dirs = ["tests", ".venv"]
+skips = ["B104"]

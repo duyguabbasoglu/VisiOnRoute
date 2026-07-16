@@ -1,0 +1,10 @@
+**/node_modules
+**/.next
+**/.venv
+.git
+.localdata
+.dev
+tests
+docs
+infra/terraform
+*.md
