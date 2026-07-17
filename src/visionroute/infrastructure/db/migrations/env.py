@@ -34,7 +34,11 @@ _MANUAL_DDL_TABLES = {"telemetry_points"}
 def include_object(
     obj: object, name: str | None, type_: str, reflected: bool, compare_to: object
 ) -> bool:
-    return not (type_ == "table" and name in (_EXTENSION_TABLES | _MANUAL_DDL_TABLES))
+    excluded = type_ == "table" and name in (_EXTENSION_TABLES | _MANUAL_DDL_TABLES)
+    # Also ignore the physical partitions and their auto-created indexes of the
+    # hand-managed partitioned table (telemetry_points_YYYYMM / _default).
+    partition_child = name is not None and name.startswith("telemetry_points")
+    return not (excluded or partition_child)
 
 
 def run_migrations_offline() -> None:

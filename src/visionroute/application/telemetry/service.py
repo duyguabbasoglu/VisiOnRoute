@@ -12,8 +12,10 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from visionroute.application.safety.engine import PointContext as SafetyPointContext
 from visionroute.domain.ids import uuid7
 from visionroute.domain.ingestion import EventEnvelope, TelemetryPayload
+from visionroute.domain.safety import TelemetrySample as SafetySample
 from visionroute.domain.telemetry_rules import (
     TRIP_IDLE_GAP,
     data_quality,
@@ -31,6 +33,8 @@ class ProcessedPoint:
     trip_id: uuid.UUID
     quality: float
     gps_anomaly: bool
+    context: SafetyPointContext
+    sample: SafetySample
 
 
 class TelemetryService:
@@ -109,7 +113,27 @@ class TelemetryService:
 
         event.status = "processed"
         event.processed_at = datetime.now(UTC)
-        return ProcessedPoint(point_id, trip.id, quality, gps_anomaly)
+        return ProcessedPoint(
+            telemetry_point_id=point_id,
+            trip_id=trip.id,
+            quality=quality,
+            gps_anomaly=gps_anomaly,
+            context=SafetyPointContext(
+                organization_id=event.organization_id,
+                vehicle_id=vehicle.id,
+                driver_id=trip.driver_id,
+                trip_id=trip.id,
+                occurred_at=envelope.occurred_at,
+                latitude=payload.latitude,
+                longitude=payload.longitude,
+            ),
+            sample=SafetySample(
+                speed_kph=payload.speed_kph,
+                acceleration_ms2=payload.acceleration_ms2,
+                lateral_acceleration_ms2=payload.lateral_acceleration_ms2,
+                quality=quality,
+            ),
+        )
 
     async def _resolve_vehicle(self, tenant_id: uuid.UUID, external_id: str) -> Vehicle | None:
         result = await self._db.execute(
