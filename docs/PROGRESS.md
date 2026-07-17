@@ -86,3 +86,22 @@ Her kilometre taşı kapanışında güncellenir. Tarihler UTC.
   RLS ham sorguları tenant bağlamı olmadan engelledi.
 - **Kalite kapısı**: ruff ✓ mypy ✓ bandit (0 yüksek/orta) ✓ 71 test ✓
   (yeni: 7 ingest entegrasyon, 8 urlguard, 7 sözleşme birim, 4 contract testi)
+
+## 2026-07-17 — M5 (Seferler & telemetri) tamamlandı
+
+- Tablolar: trips, trip_segments, telemetry_aggregates ve **zaman-partisyonlu**
+  telemetry_points (aylık RANGE partisyonları + DEFAULT partisyon, elle DDL).
+  Dördüncü Alembic revizyonu (up→down→up doğrulandı, 5 partisyon).
+- **Worker** (ADR-0002): outbox tüketicisi `FOR UPDATE SKIP LOCKED`, üstel
+  geri çekilme, `dead_letter` eşiği. `ingest.event_accepted` olaylarını
+  telemetri noktalarına ve seferlere dönüştürür.
+- Sefer yaşam döngüsü: aktif sefer takibi, 15 dk boşluk → sefer kapatma,
+  denormalize sefer başı (son konum, mesafe, nokta sayısı, azami hız).
+- Deterministik telemetri kuralları: haversine mesafe, veri-kalite skoru
+  (HDOP/uydu/hız), fiziksel olarak imkânsız sıçrama (GPS anomalisi) tespiti.
+- Scheduler: partisyon önden oluşturma, bayat sefer kapatma.
+- API: canlı operasyon (bayat besleme uyarısı), sefer listesi/detay, iz (trail).
+- **Uçtan uca test**: ingest → worker → telemetri → sefer → canlı harita/iz;
+  kiracı izolasyonu tüm hat boyunca doğrulandı.
+- **Kalite kapısı**: ruff ✓ mypy ✓ bandit ✓ 80 test ✓
+  (yeni: 6 telemetri kuralı birim, 3 boru hattı entegrasyon testi)
