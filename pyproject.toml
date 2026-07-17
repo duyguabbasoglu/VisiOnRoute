@@ -142,4 +142,7 @@ forbidden_modules = ["fastapi", "sqlalchemy", "alembic", "redis", "httpx", "boto
 # ---------------------------------------------------------------- bandit
 [tool.bandit]
 exclude_dirs = ["tests", ".venv"]
-skips = ["B104"]
+# B104: 0.0.0.0 bind is intended inside containers.
+# B311: `random` is used only by the demo telemetry simulator for synthetic
+#        data generation — never for security/cryptographic purposes.
+skips = ["B104", "B311"]

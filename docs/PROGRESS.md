@@ -60,3 +60,29 @@ Her kilometre taşı kapanışında güncellenir. Tarihler UTC.
   RBAC (FLEET_READ / FLEET_MANAGE) ile korunur.
 - **Kalite kapısı**: ruff ✓ mypy ✓ bandit (0 yüksek/orta) ✓ 46 test ✓
   (yeni: 7 filo entegrasyon testi, 6 izin birim testi, RBAC katalog seed testi)
+
+## 2026-07-17 — M4 (Veri alımı) tamamlandı
+
+- Kanonik olay zarfı (`visionroute.domain.ingestion`, sürüm 1.0): katı Pydantic
+  doğrulama, saat dilimi zorunluluğu, koordinat/hız aralıkları, sentetik veri
+  işaretleri (`data_origin`, `environment`).
+- Tablolar: data_sources, data_source_credentials_metadata, ingest_events
+  (RLS'li). Dedup doğal anahtarı (organizasyon, source, event_id). Üçüncü
+  Alembic revizyonu (up→down→up doğrulandı).
+- REST alım API'si (`X-API-Key`, `ingest:write` kapsamı): tek/çoklu olay,
+  CSV toplu içe aktarma (10 MiB sınırı, dekompresyon bombası koruması).
+- İşlem hattı: şema sürümü → yapı doğrulama → telemetri yükü → zaman damgası
+  mantığı → kiracı eşleme → dedup'lu kabul. Reddedilenler karantinaya alınır,
+  Türkçe nedenle saklanır (kaybolmaz).
+- Idempotency: `ON CONFLICT DO NOTHING`; kabul edilen her olay outbox'a yazılır
+  (worker M5+ işleyecek).
+- API istemci/anahtar yönetimi: hash'li saklama, kapsam, süre, iptal,
+  son kullanım; ihraç anında bir kez gösterim.
+- SSRF-güvenli URL doğrulayıcı (`urlguard`): şema allowlist, kimlik-bilgisi
+  reddi, özel/loopback/link-local/metadata adresleri engellenir.
+- Referans simülatör CLI: aynı genel sözleşme üzerinden sentetik veri;
+  `data_origin=synthetic`. **Uçtan uca canlı doğrulama yapıldı**: onboarding →
+  veri kaynağı → API anahtarı → simülatör → 10 olay kabul, outbox'ta 10 kayıt,
+  RLS ham sorguları tenant bağlamı olmadan engelledi.
+- **Kalite kapısı**: ruff ✓ mypy ✓ bandit (0 yüksek/orta) ✓ 71 test ✓
+  (yeni: 7 ingest entegrasyon, 8 urlguard, 7 sözleşme birim, 4 contract testi)
