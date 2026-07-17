@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from visionroute.application.safety.engine import SafetyEngine
 from visionroute.application.telemetry.service import TelemetryService
 from visionroute.config.settings import Settings
 from visionroute.infrastructure.db.engine import build_engine, build_session_factory
@@ -100,7 +101,14 @@ class Worker:
         if ingest_event is None or ingest_event.status != "accepted":
             return
         ingest_event.status = "processing"
-        await TelemetryService(session).process_ingest_event(ingest_event)
+        processed = await TelemetryService(session).process_ingest_event(ingest_event)
+        if processed is None:
+            return
+
+        # Run the deterministic safety engine over the new telemetry point.
+        engine = SafetyEngine(session)
+        thresholds = await engine.load_thresholds(processed.context.organization_id)
+        await engine.evaluate(processed.context, processed.sample, thresholds)
 
     async def _mark_retry(self, event: OutboxEvent, exc: Exception) -> None:
         event.attempts += 1

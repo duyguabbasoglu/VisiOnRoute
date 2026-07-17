@@ -105,3 +105,24 @@ Her kilometre taşı kapanışında güncellenir. Tarihler UTC.
   kiracı izolasyonu tüm hat boyunca doğrulandı.
 - **Kalite kapısı**: ruff ✓ mypy ✓ bandit ✓ 80 test ✓
   (yeni: 6 telemetri kuralı birim, 3 boru hattı entegrasyon testi)
+
+## 2026-07-17 — M6 (Güvenlik motoru) tamamlandı
+
+- Deterministik kural motoru (`visionroute.domain.safety`, sürüm 2): sert fren,
+  sert hızlanma, sert viraj, hız aşımı. **LLM sayısal telemetriyi sınıflandırmaz.**
+- Sürümlü şiddet çerçevesi (eşiğe uzaklık → düşük/orta/yüksek/kritik); güven
+  seviyesi veri kalitesini yansıtır, düşük kalite insan incelemesi bayrağı kaldırır.
+- Kiracı bazlı eşik geçersiz kılma (organization_settings.risk_thresholds).
+- Tablolar: safety_events (dedup doğal anahtarı, inceleme yaşam döngüsü),
+  event_evidence (telemetri penceresi + medya için storage_key). RLS'li.
+  Beşinci Alembic revizyonu (up→down→up doğrulandı).
+- Tekilleştirme: aynı (araç, tip, 30 sn kova) çakışır, occurrence_count artar.
+- Açıklanabilirlik: her olay "Ne oldu / Ne zaman / Nerede / Hangi veri / Hangi
+  kural / Eşik / Ölçülen / Güven / Veri kalitesi / İnceleme gerekli" yanıtlar.
+- Worker entegrasyonu: telemetri noktası oluşturulduktan sonra güvenlik motoru
+  çalışır; kanıt bağlanır, outbox olayı yayınlanır.
+- Güvenlik olayları API: filtrelenebilir liste + detay (açıklama + kanıt).
+- **Uçtan uca test**: sert fren telemetrisi → açıklamalı güvenlik olayı,
+  dedup, kiracı izolasyonu, normal sürüşte olay üretilmemesi.
+- **Kalite kapısı**: ruff ✓ mypy ✓ bandit ✓ 92 test ✓
+  (yeni: 8 kural birim, 4 motor entegrasyon testi)

@@ -4,8 +4,9 @@ from visionroute.infrastructure.db.models import (
     fleet,
     identity,
     ingestion,
+    safety,
     system,
     telemetry,
 )
 
-__all__ = ["fleet", "identity", "ingestion", "system", "telemetry"]
+__all__ = ["fleet", "identity", "ingestion", "safety", "system", "telemetry"]
