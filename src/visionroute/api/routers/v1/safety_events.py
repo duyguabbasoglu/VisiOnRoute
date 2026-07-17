@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from visionroute.api.deps import TenantSession, require_permission
@@ -203,3 +203,33 @@ async def get_safety_event(
         severity_framework_version=event.severity_framework_version,
         evidence=evidence,
     )
+
+
+class ReviewRequest(BaseModel):
+    decision: str = Field(pattern="^(confirmed|rejected|uncertain)$")
+    notes: str | None = Field(default=None, max_length=4000)
+    root_cause: str | None = Field(default=None, max_length=60)
+    resolution: str | None = Field(default=None, max_length=40)
+
+
+@router.post("/{event_id}/review", response_model=SafetyEventOut)
+async def review_safety_event(
+    event_id: uuid.UUID,
+    body: ReviewRequest,
+    db: TenantSession,
+    ctx: Annotated[RequestContext, require_permission(Permission.EVENTS_REVIEW)],
+) -> SafetyEventOut:
+    """Olayı onayla / reddet / belirsiz olarak işaretle; not ve çözüm ekle."""
+    from visionroute.application.safety.review import EventReviewService
+
+    service = EventReviewService(db)
+    event = await service.review(
+        ctx,
+        _tenant(ctx),
+        event_id,
+        decision=body.decision,
+        notes=body.notes,
+        root_cause=body.root_cause,
+        resolution=body.resolution,
+    )
+    return _to_out(event)

@@ -126,3 +126,20 @@ Her kilometre taşı kapanışında güncellenir. Tarihler UTC.
   dedup, kiracı izolasyonu, normal sürüşte olay üretilmemesi.
 - **Kalite kapısı**: ruff ✓ mypy ✓ bandit ✓ 92 test ✓
   (yeni: 8 kural birim, 4 motor entegrasyon testi)
+
+## 2026-07-17 — M7 (Olay inceleme, yol riski, sürücü skoru) tamamlandı
+
+- Olay inceleme akışı: onayla/reddet/belirsiz + not + kök neden + çözüm;
+  her işlem değişmez denetim kaydına yazılır. EVENTS_REVIEW izni zorunlu.
+- Yol riski kümeleme: tekrarlanan sert olayları konuma göre gruplar
+  (deterministik açgözlü kümeleme); gözlenen kanıt / çıkarılan risk / güven /
+  kaynak güvenilirliği ayrı tutulur. `road_risks` tablosu.
+- Coğrafi çitler (geofences): dairesel yüksek-risk bölgeleri. Altıncı Alembic
+  revizyonu (up→down→up doğrulandı, RLS'li).
+- **Şeffaf sürücü risk skoru** (`domain.driver_score`, sürüm 1): maruziyete
+  göre normalize (100 km başına), yapılandırılabilir şiddet ağırlıkları,
+  tazelik yarı-ömrü, güven & veri-kalitesi ağırlıklandırma, minimum maruziyet
+  eşiği (50 km altında skor yok), tam açıklanabilir, gizli/demografik değişken
+  yok. Reddedilen olaylar hariç tutulur.
+- **Kalite kapısı**: ruff ✓ mypy ✓ bandit ✓ 103 test ✓
+  (yeni: 7 sürücü skoru birim, 4 inceleme/risk entegrasyon testi)
