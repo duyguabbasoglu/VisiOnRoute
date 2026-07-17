@@ -18,9 +18,7 @@ def test_seeded_rbac_matches_catalog(test_settings: Settings) -> None:
         engine = create_async_engine(test_settings.database_url)
         try:
             async with engine.connect() as conn:
-                db_perms = {
-                    r[0] for r in await conn.execute(text("SELECT code FROM permissions"))
-                }
+                db_perms = {r[0] for r in await conn.execute(text("SELECT code FROM permissions"))}
                 db_roles = {r[0] for r in await conn.execute(text("SELECT key FROM roles"))}
                 db_pairs = {
                     (r[0], r[1])
@@ -34,9 +32,7 @@ def test_seeded_rbac_matches_catalog(test_settings: Settings) -> None:
         assert db_perms == {p.value for p in Permission}
         assert db_roles == {r.value for r in RoleKey}
         catalog_pairs = {
-            (role.value, perm.value)
-            for role, perms in ROLE_PERMISSIONS.items()
-            for perm in perms
+            (role.value, perm.value) for role, perms in ROLE_PERMISSIONS.items() for perm in perms
         }
         assert db_pairs == catalog_pairs
 

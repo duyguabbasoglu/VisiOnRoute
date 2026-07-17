@@ -36,7 +36,5 @@ def test_role_has_helper() -> None:
 
 
 def test_only_owner_and_admin_can_manage_members() -> None:
-    managers = {
-        role for role in RoleKey if Permission.ORG_MEMBERS_MANAGE in ROLE_PERMISSIONS[role]
-    }
+    managers = {role for role in RoleKey if Permission.ORG_MEMBERS_MANAGE in ROLE_PERMISSIONS[role]}
     assert managers == {RoleKey.OWNER, RoleKey.ADMIN}
