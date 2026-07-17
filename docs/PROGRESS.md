@@ -45,3 +45,18 @@ Her kilometre taşı kapanışında güncellenir. Tarihler UTC.
 - Güvenlik testleri: JWT algoritma karmaşası (elle üretilmiş HS256), alg=none,
   süresi dolmuş/yanlış audience/eksik claim, IDOR, SQL enjeksiyon dizeleri,
   aşırı büyük gövde.
+
+## 2026-07-17 — M3 (Filo alanı) tamamlandı
+
+- Tablolar: fleets, vehicle_groups, vehicles, drivers, driver_assignments,
+  devices, cameras. RLS tüm filo tablolarına uygulandı; migration up→down→up
+  doğrulandı. İkinci Alembic revizyonu.
+- `external_id` her kaynakta kiracı içinde benzersiz (ingestion eşlemesi için).
+- Sürücü-araç ataması zaman sınırlı; araç başına en fazla bir açık atama
+  (kısmi benzersiz indeks) — testle doğrulandı.
+- Filo servisi kiracı-bağlı; benzersizlik ihlalleri Türkçe çakışma hatasına
+  çevrilir; çapraz kiracı erişim 404 döner (RLS + açık kontrol).
+- CRUD uçları: /vehicles, /drivers, /devices, /cameras, /fleets, /assignments;
+  RBAC (FLEET_READ / FLEET_MANAGE) ile korunur.
+- **Kalite kapısı**: ruff ✓ mypy ✓ bandit (0 yüksek/orta) ✓ 46 test ✓
+  (yeni: 7 filo entegrasyon testi, 6 izin birim testi, RBAC katalog seed testi)
