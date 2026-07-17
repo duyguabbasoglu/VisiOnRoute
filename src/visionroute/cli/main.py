@@ -16,6 +16,7 @@ import typer
 
 from visionroute.cli.admin import app as admin_app
 from visionroute.cli.simulate import app as simulate_app
+from visionroute.cli.worker import scheduler_app, worker_app
 from visionroute.observability.logging import configure_logging
 
 app = typer.Typer(name="visionroute", no_args_is_help=True, add_completion=False)
@@ -23,6 +24,8 @@ keys_app = typer.Typer(no_args_is_help=True, help="JWT anahtar yönetimi (yalnı
 app.add_typer(keys_app, name="keys")
 app.add_typer(admin_app, name="admin")
 app.add_typer(simulate_app, name="simulate")
+app.add_typer(worker_app, name="worker")
+app.add_typer(scheduler_app, name="scheduler")
 
 
 @app.callback()

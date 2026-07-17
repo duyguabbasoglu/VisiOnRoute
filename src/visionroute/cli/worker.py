@@ -1,0 +1,52 @@
+"""Worker and scheduler CLI entrypoints."""
+
+from __future__ import annotations
+
+import asyncio
+
+import typer
+
+from visionroute.config.settings import get_settings
+
+worker_app = typer.Typer(no_args_is_help=True, help="Outbox/iş kuyruğu tüketicisi.")
+scheduler_app = typer.Typer(no_args_is_help=True, help="Zamanlanmış işler.")
+
+
+@worker_app.command("run")
+def worker_run(
+    poll_interval: float = typer.Option(1.0, help="Boşta bekleme aralığı (sn)."),
+    once: bool = typer.Option(False, help="Tek partiyi işle ve çık (test/CI)."),
+) -> None:
+    """Outbox olaylarını işleyen worker'ı başlatır."""
+    from visionroute.worker.runner import Worker
+
+    worker = Worker(get_settings())
+
+    async def _run() -> None:
+        if once:
+            count = await worker.run_once()
+            typer.echo(f"{count} olay işlendi.")
+            await worker._engine.dispose()
+        else:
+            await worker.run_forever(poll_interval=poll_interval)
+
+    asyncio.run(_run())
+
+
+@scheduler_app.command("run")
+def scheduler_run(
+    once: bool = typer.Option(False, help="Bir tur çalış ve çık."),
+    interval: float = typer.Option(300.0, help="Turlar arası bekleme (sn)."),
+) -> None:
+    """Partisyon bakımı ve bayat sefer kapatma gibi periyodik işleri çalıştırır."""
+    from visionroute.scheduler.runner import Scheduler
+
+    scheduler = Scheduler(get_settings())
+
+    async def _run() -> None:
+        if once:
+            await scheduler.run_once()
+        else:
+            await scheduler.run_forever(interval=interval)
+
+    asyncio.run(_run())

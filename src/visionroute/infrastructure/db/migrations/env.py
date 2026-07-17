@@ -27,12 +27,14 @@ target_metadata = Base.metadata
 
 # Tables owned by extensions (PostGIS) must never be dropped by autogenerate.
 _EXTENSION_TABLES = {"spatial_ref_sys"}
+# Partitioned tables are managed with hand-written DDL in their migration.
+_MANUAL_DDL_TABLES = {"telemetry_points"}
 
 
 def include_object(
     obj: object, name: str | None, type_: str, reflected: bool, compare_to: object
 ) -> bool:
-    return not (type_ == "table" and name in _EXTENSION_TABLES)
+    return not (type_ == "table" and name in (_EXTENSION_TABLES | _MANUAL_DDL_TABLES))
 
 
 def run_migrations_offline() -> None:
