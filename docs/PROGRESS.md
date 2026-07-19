@@ -159,3 +159,20 @@ Her kilometre taşı kapanışında güncellenir. Tarihler UTC.
 - Analitik özeti: şiddet dağılımı, onay oranı, 100 km başına olay (payda yoksa
   null — asla uydurma oran), Türkçe veri notu.
 - **Kalite kapısı**: ruff ✓ mypy ✓ bandit ✓ 110 test ✓
+
+## 2026-07-17 — M10 (SaaS & platform yönetimi) tamamlandı
+
+- Tablolar: plans (katalog seed: Başlangıç 10 araç/5 kullanıcı, Profesyonel
+  100/25, Kurumsal sınırsız), subscriptions (org başına tek, deneme/aktif/
+  gecikmiş/iptal), usage_records. Sekizinci Alembic revizyonu, RLS'li.
+- Kayıt anında otomatik 30 günlük deneme aboneliği (Başlangıç planı).
+- **Limit zorlaması uygulama katmanında**: araç limiti (create_vehicle) ve
+  kullanıcı limiti (davet) aşımında Türkçe 409; -1 = sınırsız. Testlerle
+  doğrulandı (10 araç sonrası red, 5 üyelik sonrası red).
+- Faturalama soyutlaması: varsayılan manuel fatura modu (ADR-0009); Stripe
+  adaptörü kimlik bilgisi sağlanana dek devre dışı (HANDOVER).
+- Platform yönetimi (yalnızca süper admin): organizasyon listesi + plan
+  değiştirme (denetim kayıtlı) + plan kataloğu + sistem sağlığı (outbox/
+  karantina/webhook DLQ sayaçları). Kiracı sahibi 403 alır (testle doğrulandı).
+- Kiracıya abonelik görünümü: /subscription (plan, limitler, deneme bitişi).
+- **Kalite kapısı**: ruff ✓ mypy ✓ bandit ✓ 114 test ✓

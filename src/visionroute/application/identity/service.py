@@ -125,6 +125,9 @@ class IdentityService:
             data={"slug": slug},
             organization_id=organization.id,
         )
+        from visionroute.application.saas.service import SubscriptionService
+
+        await SubscriptionService(self._db).start_trial(organization.id)
         await publish_event(
             self._db,
             aggregate_type="organization",
@@ -291,6 +294,9 @@ class IdentityService:
             raise DomainNotFoundError("Organizasyon bağlamı bulunamadı.")
         if role_key == RoleKey.OWNER:
             raise ValidationFailedError(["Sahiplik davetle devredilemez."])
+        from visionroute.application.saas.service import SubscriptionService
+
+        await SubscriptionService(self._db).enforce_user_limit(ctx.organization_id)
 
         existing_user = await self.get_user_by_email(email)
         if existing_user is not None:
