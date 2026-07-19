@@ -8,6 +8,9 @@ from visionroute.api.routers.v1.auth import router as auth_router
 from visionroute.api.routers.v1.fleet import router as fleet_router
 from visionroute.api.routers.v1.ingest import router as ingest_router
 from visionroute.api.routers.v1.integrations import router as integrations_router
+from visionroute.api.routers.v1.notifications_reports import (
+    router as notifications_reports_router,
+)
 from visionroute.api.routers.v1.operations import router as operations_router
 from visionroute.api.routers.v1.organizations import router as organizations_router
 from visionroute.api.routers.v1.risk import router as risk_router
@@ -22,3 +25,4 @@ router.include_router(ingest_router)
 router.include_router(operations_router)
 router.include_router(safety_events_router)
 router.include_router(risk_router)
+router.include_router(notifications_reports_router)
