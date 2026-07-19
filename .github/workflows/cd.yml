@@ -1,0 +1,98 @@
+# CD: build → scan → push (OIDC, no long-lived AWS keys) → migrate → deploy.
+# Production infrastructure changes require environment approval in GitHub.
+name: cd
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Hedef ortam"
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+
+permissions:
+  contents: read
+  id-token: write # AWS OIDC federation
+
+env:
+  AWS_REGION: eu-central-1
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - id: meta
+        run: echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4.0.2
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076 # v2.0.1
+      - name: Build images
+        run: |
+          docker build -f infra/docker/api.Dockerfile -t "$ECR_API:${{ steps.meta.outputs.tag }}" .
+          docker build -f infra/docker/web.Dockerfile -t "$ECR_WEB:${{ steps.meta.outputs.tag }}" .
+        env:
+          ECR_API: ${{ secrets.ECR_API_URL }}
+          ECR_WEB: ${{ secrets.ECR_WEB_URL }}
+      - name: SBOM + image scan
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            anchore/syft:latest "$ECR_API:${{ steps.meta.outputs.tag }}" -o spdx-json > sbom-api.json
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            anchore/grype:latest "$ECR_API:${{ steps.meta.outputs.tag }}" --fail-on high
+        env:
+          ECR_API: ${{ secrets.ECR_API_URL }}
+      - name: Push images
+        run: |
+          docker push "$ECR_API:${{ steps.meta.outputs.tag }}"
+          docker push "$ECR_WEB:${{ steps.meta.outputs.tag }}"
+        env:
+          ECR_API: ${{ secrets.ECR_API_URL }}
+          ECR_WEB: ${{ secrets.ECR_WEB_URL }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    # GitHub environment gate: production requires manual approval.
+    environment: ${{ inputs.environment || 'staging' }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4.0.2
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: "1.10.5"
+      - name: Terraform plan & apply
+        working-directory: infra/terraform/envs/${{ inputs.environment || 'staging' }}
+        run: |
+          terraform init -input=false
+          terraform plan -input=false -var "image_tag=${{ needs.build-and-push.outputs.image_tag }}" -out=tfplan
+          terraform apply -input=false tfplan
+      - name: Run database migration (one-off task)
+        run: |
+          aws ecs run-task \
+            --cluster "visionroute-${{ inputs.environment || 'staging' }}" \
+            --task-definition "visionroute-${{ inputs.environment || 'staging' }}-api" \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[${{ secrets.PRIVATE_SUBNET_IDS }}],securityGroups=[${{ secrets.SERVICE_SG_ID }}]}" \
+            --overrides '{"containerOverrides":[{"name":"api","command":["alembic","upgrade","head"]}]}'
+      - name: Smoke test
+        run: |
+          for i in $(seq 1 20); do
+            if curl -fsS "https://${{ secrets.APP_HOSTNAME }}/health/ready"; then exit 0; fi
+            sleep 15
+          done
+          echo "Smoke test başarısız" && exit 1

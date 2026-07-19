@@ -176,3 +176,23 @@ Her kilometre taşı kapanışında güncellenir. Tarihler UTC.
   karantina/webhook DLQ sayaçları). Kiracı sahibi 403 alır (testle doğrulandı).
 - Kiracıya abonelik görünümü: /subscription (plan, limitler, deneme bitişi).
 - **Kalite kapısı**: ruff ✓ mypy ✓ bandit ✓ 114 test ✓
+
+## 2026-07-17 — M11 (AWS altyapısı & CD) tamamlandı
+
+- Terraform: yeniden kullanılabilir `stack` modülü (VPC + özel alt ağlar + NAT,
+  RDS PostgreSQL 17 [KMS, PITR 14 gün, public erişim kapalı], ElastiCache
+  Redis, özel S3 kanıt bucket'ı [versiyonlu, SSE-KMS, public block],
+  ECR [immutable + push tarama], ECS Fargate [api+worker], ALB [TLS 1.3
+  politikası, /api/* yönlendirme], en az yetkili IAM görev rolleri, Secrets
+  Manager [DB parolası + JWT anahtar kabı], bütçe alarmı).
+- Ortamlar: staging (ucuz profil, tek AZ) ve production (multi-AZ, silme
+  koruması, zorunlu ACM sertifikası, GitHub environment onay kapısı).
+- CD iş akışı: OIDC federasyonu (uzun ömürlü AWS anahtarı yok), SBOM (syft) +
+  imaj taraması (grype --fail-on high), migration ayrı tek seferlik ECS görevi,
+  smoke test. Tüm eylemler SHA-sabitli.
+- Operasyon dokümanları: deployment.md (ilk kurulum + olağan dağıtım +
+  rollback), runbook.md (sağlık, karantina, DLQ yeniden kuyruğa alma, anahtar
+  rotasyonu, olay müdahalesi), backup-restore.md (PITR tatbikat prosedürü).
+- **Sınırlama**: Terraform CLI bu makinede yok; `terraform validate` CI
+  işinde tanımlı (ci.yml terraform job'ı). AWS hesabı olmadan canlı doğrulama
+  yapılamadı (HANDOVER'da).
