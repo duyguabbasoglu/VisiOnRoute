@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from visionroute.application.audit import record_audit
 from visionroute.application.context import RequestContext
 from visionroute.application.errors import DomainConflictError, DomainNotFoundError
+from visionroute.application.saas.service import SubscriptionService
 from visionroute.infrastructure.db.models.fleet import (
     Camera,
     Device,
@@ -52,6 +53,7 @@ class FleetService:
         year: int | None,
         fleet_id: uuid.UUID | None,
     ) -> Vehicle:
+        await SubscriptionService(self._db).enforce_vehicle_limit(tenant_id)
         if fleet_id is not None:
             await self._require(Fleet, tenant_id, fleet_id, "Filo bulunamadı.")
         vehicle = Vehicle(
