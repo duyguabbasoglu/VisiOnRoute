@@ -196,3 +196,11 @@ Her kilometre taşı kapanışında güncellenir. Tarihler UTC.
 - **Sınırlama**: Terraform CLI bu makinede yok; `terraform validate` CI
   işinde tanımlı (ci.yml terraform job'ı). AWS hesabı olmadan canlı doğrulama
   yapılamadı (HANDOVER'da).
+
+## 2026-07-17 — M12 (Son doğrulama & devir) tamamlandı
+
+- Tam kalite paketi son kez koşuldu: fmt ✓ lint ✓ import sınırları ✓ mypy
+  strict (97 dosya) ✓ 114 test ✓ bandit ✓ boş DB'den 8 migration ✓
+  frontend typecheck/lint/build ✓.
+- `docs/HANDOVER.md` eksikler tablosu + NEXT AGENT PROMPT INPUT ile güncellendi.
+- `docs/RELEASE_READINESS.md` kanıt bazlı değerlendirme: **READY FOR STAGING**.
