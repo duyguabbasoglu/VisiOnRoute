@@ -143,3 +143,19 @@ Her kilometre taşı kapanışında güncellenir. Tarihler UTC.
   yok. Reddedilen olaylar hariç tutulur.
 - **Kalite kapısı**: ruff ✓ mypy ✓ bandit ✓ 103 test ✓
   (yeni: 7 sürücü skoru birim, 4 inceleme/risk entegrasyon testi)
+
+## 2026-07-17 — M9 (Bildirimler, raporlar, analitik) tamamlandı
+
+- Tablolar: notification_rules, notifications, webhook_endpoints,
+  webhook_deliveries (RLS'li). Yedinci Alembic revizyonu (geri alınabilir).
+- Kural değerlendirme worker'da: `safety.event_created` → şiddet eşiği kuralları
+  → uygulama içi bildirim + imzalı webhook teslimatı kuyruğu.
+- Webhook teslimatı: HMAC-SHA256 imza (`t=<ts>,v1=<hex>`, replay savunması),
+  gönderim öncesi SSRF yeniden doğrulaması, üstel geri çekilme, dead-letter.
+  İmza yerel alıcıya gerçek teslimatla testte doğrulandı.
+- Raporlar: CSV (BOM'lu, metadata bloğu: organizasyon/zaman/kapsam/metodoloji/
+  sınırlamalar) ve yönetici PDF'i (fpdf2). PDF'te tam Türkçe glif desteği için
+  gömülü font gerekiyor (HANDOVER).
+- Analitik özeti: şiddet dağılımı, onay oranı, 100 km başına olay (payda yoksa
+  null — asla uydurma oran), Türkçe veri notu.
+- **Kalite kapısı**: ruff ✓ mypy ✓ bandit ✓ 110 test ✓

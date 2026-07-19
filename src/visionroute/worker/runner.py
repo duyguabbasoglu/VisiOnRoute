@@ -8,11 +8,17 @@ failures back off exponentially and land in ``dead_letter`` after max attempts.
 from __future__ import annotations
 
 import asyncio
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from visionroute.application.notifications.service import (
+    DEV_URL_POLICY,
+    PROD_URL_POLICY,
+    NotificationService,
+)
 from visionroute.application.safety.engine import SafetyEngine
 from visionroute.application.telemetry.service import TelemetryService
 from visionroute.config.settings import Settings
@@ -30,6 +36,7 @@ _BATCH = 50
 
 class Worker:
     def __init__(self, settings: Settings) -> None:
+        self._settings = settings
         self._engine = build_engine(settings)
         self._factory: async_sessionmaker[AsyncSession] = build_session_factory(self._engine)
         self._stopping = False
@@ -65,6 +72,14 @@ class Worker:
                         attempts=event.attempts,
                         error=str(exc),
                     )
+            # Send due webhook deliveries in the same tick.
+            policy = (
+                PROD_URL_POLICY if self._settings.environment.is_production_like else DEV_URL_POLICY
+            )
+            delivered, _failed = await NotificationService(session).deliver_pending(
+                url_policy=policy
+            )
+            handled += delivered
             await session.commit()
             return handled
 
@@ -89,9 +104,23 @@ class Worker:
     async def _dispatch(self, session: AsyncSession, event: OutboxEvent) -> None:
         if event.event_type == "ingest.event_accepted":
             await self._handle_ingest_accepted(session, event)
-        # Other event types (notifications, analytics) are handled in later
-        # milestones; unknown types are acknowledged as done (no-op) so they
-        # do not clog the queue.
+        elif event.event_type == "safety.event_created":
+            await self._handle_safety_event_created(session, event)
+        # Unknown types are acknowledged as done (no-op) so they don't clog
+        # the queue.
+
+    async def _handle_safety_event_created(self, session: AsyncSession, event: OutboxEvent) -> None:
+        payload = event.payload
+        organization_id = payload.get("organization_id")
+        safety_event_id = payload.get("safety_event_id")
+        if organization_id is None or safety_event_id is None:
+            return
+        await NotificationService(session).on_safety_event(
+            organization_id=uuid.UUID(str(organization_id)),
+            safety_event_id=uuid.UUID(str(safety_event_id)),
+            event_type=str(payload.get("event_type", "")),
+            severity=str(payload.get("severity", "low")),
+        )
 
     async def _handle_ingest_accepted(self, session: AsyncSession, event: OutboxEvent) -> None:
         ingest_event_id = event.payload.get("ingest_event_id")

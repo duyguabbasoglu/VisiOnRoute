@@ -1,0 +1,202 @@
+"""Report generation (M9): CSV and PDF with mandatory metadata.
+
+Every generated report carries: tenant, generation timestamp, selected
+filters, data freshness/coverage, methodology and limitations (spec 2.8).
+"""
+
+from __future__ import annotations
+
+import csv
+import io
+import uuid
+from dataclasses import dataclass
+from datetime import UTC, datetime
+
+from fpdf import FPDF
+from fpdf.enums import XPos, YPos
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from visionroute.domain.safety import (
+    EVENT_LABELS_TR,
+    SEVERITY_LABELS_TR,
+    SafetyEventType,
+    Severity,
+)
+from visionroute.infrastructure.db.models.identity import Organization
+from visionroute.infrastructure.db.models.safety import SafetyEvent
+from visionroute.infrastructure.db.models.telemetry import Trip
+
+_METHODOLOGY_TR = (
+    "Olaylar deterministik kurallarla uretilir; siddet ve guven ayri hesaplanir. "
+    "Bu rapor kazalarin onlenecegini garanti etmez; riskleri veriye dayali "
+    "gorunur kilar."
+)
+_LIMITATIONS_TR = (
+    "Veri kapsami cihaz baglantisina ve veri kalitesine baglidir. Dusuk kaliteli "
+    "veriden uretilen olaylar insan incelemesi gerektirir."
+)
+
+
+@dataclass(frozen=True)
+class ReportMeta:
+    organization_name: str
+    generated_at: datetime
+    window_days: int
+    event_count: int
+    total_distance_km: float
+    latest_event_at: datetime | None
+
+
+class ReportService:
+    def __init__(self, session: AsyncSession) -> None:
+        self._db = session
+
+    async def _load(
+        self, tenant_id: uuid.UUID, window_days: int
+    ) -> tuple[ReportMeta, list[SafetyEvent]]:
+        organization = await self._db.get(Organization, tenant_id)
+        events_result = await self._db.execute(
+            select(SafetyEvent)
+            .where(SafetyEvent.organization_id == tenant_id)
+            .order_by(SafetyEvent.occurred_at.desc())
+            .limit(5000)
+        )
+        events = list(events_result.scalars())
+        distance = await self._db.execute(
+            select(func.coalesce(func.sum(Trip.distance_km), 0.0)).where(
+                Trip.organization_id == tenant_id
+            )
+        )
+        meta = ReportMeta(
+            organization_name=organization.name if organization else str(tenant_id),
+            generated_at=datetime.now(UTC),
+            window_days=window_days,
+            event_count=len(events),
+            total_distance_km=round(float(distance.scalar_one()), 1),
+            latest_event_at=events[0].occurred_at if events else None,
+        )
+        return meta, events
+
+    async def safety_events_csv(self, tenant_id: uuid.UUID, *, window_days: int = 90) -> str:
+        meta, events = await self._load(tenant_id, window_days)
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        # Metadata block (as comment-style rows) before the header.
+        writer.writerow(["# Rapor", "Güvenlik Olayları"])
+        writer.writerow(["# Organizasyon", meta.organization_name])
+        writer.writerow(["# Üretim zamanı (UTC)", meta.generated_at.isoformat()])
+        writer.writerow(["# Kapsanan toplam mesafe (km)", meta.total_distance_km])
+        writer.writerow(["# Olay sayısı", meta.event_count])
+        writer.writerow(["# Metodoloji", _METHODOLOGY_TR])
+        writer.writerow(["# Sınırlamalar", _LIMITATIONS_TR])
+        writer.writerow([])
+        writer.writerow(
+            [
+                "olay_id",
+                "olay_tipi",
+                "olay_etiketi",
+                "siddet",
+                "guven",
+                "zaman_utc",
+                "enlem",
+                "boylam",
+                "olculen_deger",
+                "esik",
+                "inceleme_durumu",
+                "tekrar_sayisi",
+            ]
+        )
+        for event in events:
+            writer.writerow(
+                [
+                    str(event.id),
+                    event.event_type,
+                    _label(event.event_type),
+                    event.severity,
+                    event.confidence,
+                    event.occurred_at.isoformat(),
+                    event.latitude,
+                    event.longitude,
+                    event.measured_value,
+                    event.threshold,
+                    event.review_status,
+                    event.occurrence_count,
+                ]
+            )
+        return buffer.getvalue()
+
+    async def executive_pdf(self, tenant_id: uuid.UUID, *, window_days: int = 90) -> bytes:
+        meta, events = await self._load(tenant_id, window_days)
+        by_severity = {s.value: 0 for s in Severity}
+        for event in events:
+            by_severity[event.severity] = by_severity.get(event.severity, 0) + 1
+        confirmed = sum(1 for e in events if e.review_status == "confirmed")
+
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Helvetica", "B", 16)
+        pdf.cell(
+            0,
+            10,
+            _ascii("VISiOnRoute — Yonetici Guvenlik Raporu"),
+            new_x=XPos.LMARGIN,
+            new_y=YPos.NEXT,
+        )
+        pdf.set_font("Helvetica", "", 10)
+        pdf.cell(
+            0,
+            6,
+            _ascii(f"Organizasyon: {meta.organization_name}"),
+            new_x=XPos.LMARGIN,
+            new_y=YPos.NEXT,
+        )
+        pdf.cell(
+            0,
+            6,
+            f"Uretim zamani (UTC): {meta.generated_at.strftime('%Y-%m-%d %H:%M')}",
+            new_x=XPos.LMARGIN,
+            new_y=YPos.NEXT,
+        )
+        pdf.cell(
+            0, 6, f"Toplam mesafe: {meta.total_distance_km} km", new_x=XPos.LMARGIN, new_y=YPos.NEXT
+        )
+        pdf.cell(0, 6, f"Olay sayisi: {meta.event_count}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.ln(4)
+
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.cell(0, 8, "Siddet dagilimi", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_font("Helvetica", "", 10)
+        for severity in Severity:
+            label = _ascii(SEVERITY_LABELS_TR[severity])
+            pdf.cell(
+                0, 6, f"{label}: {by_severity[severity.value]}", new_x=XPos.LMARGIN, new_y=YPos.NEXT
+            )
+        rate = round(confirmed / meta.event_count * 100) if meta.event_count else 0
+        pdf.cell(0, 6, f"Onay orani: %{rate}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.ln(4)
+
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.cell(0, 8, "Metodoloji", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_font("Helvetica", "", 9)
+        pdf.multi_cell(0, 5, _ascii(_METHODOLOGY_TR))
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.cell(0, 8, "Sinirlamalar", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_font("Helvetica", "", 9)
+        pdf.multi_cell(0, 5, _ascii(_LIMITATIONS_TR))
+        return bytes(pdf.output())
+
+
+def _label(event_type: str) -> str:
+    try:
+        return EVENT_LABELS_TR[SafetyEventType(event_type)]
+    except ValueError:
+        return event_type
+
+
+def _ascii(text: str) -> str:
+    """Fold Turkish characters for the PDF core font (no embedded TTF yet;
+    full Turkish glyph support requires shipping a Unicode font — tracked in
+    HANDOVER.md)."""
+    table = str.maketrans("çÇğĞıİöÖşŞüÜ—", "cCgGiIoOsSuU-")
+    return text.translate(table)
