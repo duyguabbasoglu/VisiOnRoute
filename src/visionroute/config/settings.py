@@ -90,6 +90,9 @@ class Settings(BaseSettings):
     login_rate_limit_per_minute: int = 10
     ingest_rate_limit_per_minute: int = 6000
 
+    # --- Request limits (DoS hardening; CSV import allows 10 MiB + multipart) ---
+    max_request_body_bytes: int = Field(default=12 * 1024 * 1024, ge=1024)
+
     @field_validator("database_url")
     @classmethod
     def _require_asyncpg(cls, v: str) -> str:

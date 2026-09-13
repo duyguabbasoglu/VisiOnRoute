@@ -1,8 +1,13 @@
 """Outbox worker (ADR-0002).
 
 Consumes ``outbox_events`` with FOR UPDATE SKIP LOCKED so multiple worker
-processes run safely in parallel. Each event is dispatched to a handler;
-failures back off exponentially and land in ``dead_letter`` after max attempts.
+processes run safely in parallel. Each event is dispatched to a handler inside
+its own SAVEPOINT: a handler failure (including a database error) rolls back
+only that event's changes, so one poison event cannot block the batch.
+Failures back off exponentially and land in ``dead_letter`` after max attempts.
+
+Network I/O (webhook deliveries) runs in a separate transaction after the
+claim transaction commits, so slow receivers never hold outbox row locks.
 """
 
 from __future__ import annotations
@@ -54,34 +59,48 @@ class Worker:
 
     async def run_once(self) -> int:
         """Claim and process up to one batch. Returns how many were handled."""
+        handled = await self._process_outbox_batch()
+        handled += await self._deliver_webhooks()
+        return handled
+
+    async def _process_outbox_batch(self) -> int:
+        handled = 0
         async with self._factory() as session:
             await set_rls_bypass(session)
             events = await self._claim(session)
-            handled = 0
             for event in events:
                 try:
-                    await self._dispatch(session, event)
-                    event.status = "done"
-                    event.processed_at = datetime.now(UTC)
-                    handled += 1
+                    async with session.begin_nested():
+                        await self._dispatch(session, event)
                 except Exception as exc:
-                    await self._mark_retry(event, exc)
+                    # The savepoint rollback expired the event; reload it
+                    # before recording the failure.
+                    await session.refresh(event)
+                    self._mark_retry(event, exc)
                     logger.warning(
                         "outbox_event_failed",
                         event_type=event.event_type,
                         attempts=event.attempts,
-                        error=str(exc),
+                        error_type=type(exc).__name__,
                     )
-            # Send due webhook deliveries in the same tick.
-            policy = (
-                PROD_URL_POLICY if self._settings.environment.is_production_like else DEV_URL_POLICY
-            )
+                    continue
+                event.status = "done"
+                event.processed_at = datetime.now(UTC)
+                handled += 1
+            await session.commit()
+        return handled
+
+    async def _deliver_webhooks(self) -> int:
+        policy = (
+            PROD_URL_POLICY if self._settings.environment.is_production_like else DEV_URL_POLICY
+        )
+        async with self._factory() as session:
+            await set_rls_bypass(session)
             delivered, _failed = await NotificationService(session).deliver_pending(
                 url_policy=policy
             )
-            handled += delivered
             await session.commit()
-            return handled
+        return delivered
 
     async def _claim(self, session: AsyncSession) -> list[OutboxEvent]:
         now = datetime.now(UTC)
@@ -139,9 +158,9 @@ class Worker:
         thresholds = await engine.load_thresholds(processed.context.organization_id)
         await engine.evaluate(processed.context, processed.sample, thresholds)
 
-    async def _mark_retry(self, event: OutboxEvent, exc: Exception) -> None:
+    def _mark_retry(self, event: OutboxEvent, exc: Exception) -> None:
         event.attempts += 1
-        event.last_error = str(exc)[:2000]
+        event.last_error = f"{type(exc).__name__}: {exc}"[:2000]
         if event.attempts >= _MAX_ATTEMPTS:
             event.status = "dead_letter"
         else:

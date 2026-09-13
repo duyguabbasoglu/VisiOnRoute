@@ -14,7 +14,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import ORJSONResponse
+from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from visionroute.application.errors import (
@@ -98,7 +98,7 @@ def _envelope(request: Request, code: str, message: str, **extra: Any) -> dict[s
 
 # Application-layer error → (HTTP status, machine-readable code)
 _APPLICATION_ERROR_MAP: list[tuple[type[ApplicationError], int, str]] = [
-    (ValidationFailedError, status.HTTP_422_UNPROCESSABLE_ENTITY, "VALIDATION_ERROR"),
+    (ValidationFailedError, status.HTTP_422_UNPROCESSABLE_CONTENT, "VALIDATION_ERROR"),
     (InvalidCredentialsError, status.HTTP_401_UNAUTHORIZED, "INVALID_CREDENTIALS"),
     (AccountLockedError, status.HTTP_403_FORBIDDEN, "ACCOUNT_LOCKED"),
     (PermissionDeniedError, status.HTTP_403_FORBIDDEN, "FORBIDDEN"),
@@ -109,7 +109,7 @@ _APPLICATION_ERROR_MAP: list[tuple[type[ApplicationError], int, str]] = [
 
 def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ApplicationError)
-    async def _application_error(request: Request, exc: ApplicationError) -> ORJSONResponse:
+    async def _application_error(request: Request, exc: ApplicationError) -> JSONResponse:
         for error_type, http_status, code in _APPLICATION_ERROR_MAP:
             if isinstance(exc, error_type):
                 details = (
@@ -117,31 +117,31 @@ def register_error_handlers(app: FastAPI) -> None:
                     if isinstance(exc, ValidationFailedError)
                     else None
                 )
-                return ORJSONResponse(
+                return JSONResponse(
                     status_code=http_status,
                     content=_envelope(request, code, str(exc), details=details),
                 )
         logger.exception("unmapped_application_error", error_type=type(exc).__name__)
-        return ORJSONResponse(
+        return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content=_envelope(request, "INTERNAL_ERROR", "Beklenmeyen bir hata oluştu."),
         )
 
     @app.exception_handler(ApiError)
-    async def _api_error(request: Request, exc: ApiError) -> ORJSONResponse:
-        return ORJSONResponse(
+    async def _api_error(request: Request, exc: ApiError) -> JSONResponse:
+        return JSONResponse(
             status_code=exc.status_code,
             content=_envelope(request, exc.code, exc.message, details=exc.details),
         )
 
     @app.exception_handler(RequestValidationError)
-    async def _validation_error(request: Request, exc: RequestValidationError) -> ORJSONResponse:
+    async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
         details = [
             {"field": ".".join(str(p) for p in err["loc"][1:]), "type": err["type"]}
             for err in exc.errors()
         ]
-        return ORJSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content=_envelope(
                 request,
                 "VALIDATION_ERROR",
@@ -151,7 +151,7 @@ def register_error_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(StarletteHTTPException)
-    async def _http_error(request: Request, exc: StarletteHTTPException) -> ORJSONResponse:
+    async def _http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         code = {
             401: "UNAUTHORIZED",
             403: "FORBIDDEN",
@@ -166,19 +166,17 @@ def register_error_handlers(app: FastAPI) -> None:
             405: "Bu yöntem desteklenmiyor.",
             429: "Çok fazla istek gönderildi.",
         }.get(exc.status_code, "İstek işlenemedi.")
-        return ORJSONResponse(
-            status_code=exc.status_code, content=_envelope(request, code, message)
-        )
+        return JSONResponse(status_code=exc.status_code, content=_envelope(request, code, message))
 
     @app.exception_handler(Exception)
-    async def _unhandled(request: Request, exc: Exception) -> ORJSONResponse:
+    async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
         # Log with stack trace internally; never expose it to the client.
         logger.exception(
             "unhandled_error",
             path=request.url.path,
             request_id=getattr(request.state, "request_id", None),
         )
-        return ORJSONResponse(
+        return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content=_envelope(
                 request,
