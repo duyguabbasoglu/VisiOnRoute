@@ -109,6 +109,11 @@ def test_settings(test_database_url: str, jwt_keys: tuple[Path, Path]) -> Settin
         access_token_ttl_seconds=900,
         field_encryption_keys={"test-k1": TEST_FIELD_KEY},
         field_encryption_primary_key_id="test-k1",
+        mail_backend="memory",
+        public_app_url="https://app.visionroute.test",
+        # Most suites exercise features, not the verification policy; the
+        # policy itself is tested with it enabled in test_account_security.py.
+        require_verified_email=False,
         # The whole suite shares one client address; rate limiting has its own
         # tests with production-like limits (tests/integration/test_rate_limiting.py).
         login_rate_limit_per_minute=100_000,

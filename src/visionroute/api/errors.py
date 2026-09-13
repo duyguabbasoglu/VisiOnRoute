@@ -22,8 +22,12 @@ from visionroute.application.errors import (
     ApplicationError,
     DomainConflictError,
     DomainNotFoundError,
+    InvalidAccountTokenError,
     InvalidCredentialsError,
+    InvalidMfaCodeError,
     PermissionDeniedError,
+    ReauthenticationFailedError,
+    ServiceNotConfiguredError,
     ValidationFailedError,
 )
 from visionroute.observability.logging import get_logger
@@ -106,6 +110,10 @@ _APPLICATION_ERROR_MAP: list[tuple[type[ApplicationError], int, str]] = [
     (PermissionDeniedError, status.HTTP_403_FORBIDDEN, "FORBIDDEN"),
     (DomainConflictError, status.HTTP_409_CONFLICT, "CONFLICT"),
     (DomainNotFoundError, status.HTTP_404_NOT_FOUND, "NOT_FOUND"),
+    (InvalidAccountTokenError, status.HTTP_400_BAD_REQUEST, "TOKEN_INVALID"),
+    (InvalidMfaCodeError, status.HTTP_401_UNAUTHORIZED, "MFA_INVALID"),
+    (ReauthenticationFailedError, status.HTTP_403_FORBIDDEN, "REAUTH_FAILED"),
+    (ServiceNotConfiguredError, status.HTTP_503_SERVICE_UNAVAILABLE, "SERVICE_NOT_CONFIGURED"),
 ]
 
 

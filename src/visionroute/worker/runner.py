@@ -19,6 +19,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from visionroute.application.mail.delivery import MailDeliveryService
 from visionroute.application.notifications.service import (
     DEV_URL_POLICY,
     PROD_URL_POLICY,
@@ -31,6 +32,7 @@ from visionroute.infrastructure.db.engine import build_engine, build_session_fac
 from visionroute.infrastructure.db.models.ingestion import IngestEvent
 from visionroute.infrastructure.db.models.system import OutboxEvent
 from visionroute.infrastructure.db.tenancy import set_rls_bypass
+from visionroute.infrastructure.mail import build_mail_sender
 from visionroute.infrastructure.security.crypto import build_field_cipher
 from visionroute.observability.logging import get_logger
 
@@ -46,6 +48,9 @@ class Worker:
         self._engine = build_engine(settings)
         self._factory: async_sessionmaker[AsyncSession] = build_session_factory(self._engine)
         self._cipher = build_field_cipher(settings)
+        self._mail_delivery = MailDeliveryService(
+            self._factory, build_mail_sender(settings), self._cipher, settings
+        )
         self._stopping = False
 
     async def run_forever(self, *, poll_interval: float = 1.0) -> None:
@@ -63,6 +68,7 @@ class Worker:
         """Claim and process up to one batch. Returns how many were handled."""
         handled = await self._process_outbox_batch()
         handled += await self._deliver_webhooks()
+        handled += (await self._mail_delivery.deliver_due()).handled
         return handled
 
     async def _process_outbox_batch(self) -> int:

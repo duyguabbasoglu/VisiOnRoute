@@ -19,6 +19,7 @@ from sqlalchemy import func, select
 
 from visionroute.api.deps import (
     TenantSession,
+    VerifiedEmailContext,
     get_app_settings,
     get_field_cipher,
     require_permission,
@@ -228,6 +229,7 @@ async def create_webhook(
     ctx: Annotated[RequestContext, require_permission(Permission.NOTIFICATIONS_MANAGE)],
     settings: Annotated[Settings, Depends(get_app_settings)],
     cipher: Annotated[FieldCipher, Depends(get_field_cipher)],
+    _verified: VerifiedEmailContext,
 ) -> WebhookOut:
     policy = PROD_URL_POLICY if settings.environment.is_production_like else DEV_URL_POLICY
     try:

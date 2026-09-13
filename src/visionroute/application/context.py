@@ -24,6 +24,9 @@ class RequestContext:
     request_id: str | None = None
     ip_address: str | None = None
     user_agent: str | None = None
+    # Authoritative account state resolved from the database per request.
+    email_verified: bool = False
+    mfa_enabled: bool = False
 
     def has_permission(self, permission: Permission) -> bool:
         if self.is_platform_admin:

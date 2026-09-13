@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from tests.helpers import create_org_and_login
+from tests.helpers import create_org_and_login, invite_and_login
 from visionroute.config.settings import Settings
 
 
@@ -16,37 +16,13 @@ def _headers(auth: dict[str, object]) -> dict[str, str]:
     return {"Authorization": f"Bearer {auth['access_token']}"}
 
 
-def _invite_and_accept(
-    client: TestClient,
-    owner_auth: dict[str, object],
-    email: str,
-    role: str,
-    password: str = "DavetliParola7!",
-) -> dict[str, object]:
-    invitation = client.post(
-        "/api/v1/organizations/current/invitations",
-        json={"email": email, "role": role},
-        headers=_headers(owner_auth),
-    )
-    assert invitation.status_code == 201, invitation.text
-    token = invitation.json()["invitation_token"]
-    assert token
-
-    accepted = client.post(
-        "/api/v1/auth/invitations/accept",
-        json={"token": token, "full_name": "Davetli Kişi", "password": password},
-    )
-    assert accepted.status_code == 201, accepted.text
-
-    login = client.post("/api/v1/auth/login", json={"email": email, "password": password})
-    assert login.status_code == 200, login.text
-    payload: dict[str, object] = login.json()
-    return payload
-
-
-def test_invitation_grants_role_and_rbac_enforced(client: TestClient) -> None:
+async def test_invitation_grants_role_and_rbac_enforced(
+    client: TestClient, test_settings: Settings
+) -> None:
     owner = create_org_and_login(client, "rbac-filo", "sahip@rbac.example")
-    analyst = _invite_and_accept(client, owner, "analist@rbac.example", "analyst")
+    analyst = await invite_and_login(
+        client, test_settings, owner, "analist@rbac.example", "analyst"
+    )
     assert analyst["user"]["role"] == "analyst"  # type: ignore[index]
 
     # Analyst may read the organization…

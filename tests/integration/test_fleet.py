@@ -2,7 +2,8 @@
 
 from fastapi.testclient import TestClient
 
-from tests.helpers import create_org_and_login
+from tests.helpers import create_org_and_login, invite_and_login
+from visionroute.config.settings import Settings
 
 
 def _h(auth: dict[str, object]) -> dict[str, str]:
@@ -55,25 +56,13 @@ def test_duplicate_external_id_conflict(client: TestClient) -> None:
     assert dup.json()["error"]["code"] == "CONFLICT"
 
 
-def test_fleet_read_permission_but_not_manage(client: TestClient) -> None:
+async def test_fleet_read_permission_but_not_manage(
+    client: TestClient, test_settings: Settings
+) -> None:
     owner = create_org_and_login(client, "filo-rbac", "o@filo-rbac.example")
-    invitation = client.post(
-        "/api/v1/organizations/current/invitations",
-        json={"email": "analist@filo-rbac.example", "role": "analyst"},
-        headers=_h(owner),
-    ).json()
-    client.post(
-        "/api/v1/auth/invitations/accept",
-        json={
-            "token": invitation["invitation_token"],
-            "full_name": "Analist",
-            "password": "AnalistParola9!",
-        },
+    analyst = await invite_and_login(
+        client, test_settings, owner, "analist@filo-rbac.example", "analyst"
     )
-    analyst = client.post(
-        "/api/v1/auth/login",
-        json={"email": "analist@filo-rbac.example", "password": "AnalistParola9!"},
-    ).json()
 
     # Analyst can read but not create.
     assert client.get("/api/v1/vehicles", headers=_h(analyst)).status_code == 200

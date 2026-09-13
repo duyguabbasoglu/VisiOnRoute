@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from tests.helpers import create_org_and_login
+from tests.helpers import create_org_and_login, invite_and_login
 from visionroute.application.reports.service import csv_safe
 from visionroute.config.settings import Settings
 from visionroute.scheduler.runner import SCHEDULER_LOCK_KEY, Scheduler
@@ -30,33 +30,13 @@ def _h(auth: dict[str, object]) -> dict[str, str]:
     return {"Authorization": f"Bearer {auth['access_token']}"}
 
 
-def _invite_and_login(
-    client: TestClient, owner: dict[str, object], email: str, role: str
-) -> dict[str, object]:
-    invitation = client.post(
-        "/api/v1/organizations/current/invitations",
-        json={"email": email, "role": role},
-        headers=_h(owner),
-    )
-    assert invitation.status_code == 201, invitation.text
-    accepted = client.post(
-        "/api/v1/auth/invitations/accept",
-        json={
-            "token": invitation.json()["invitation_token"],
-            "full_name": "Davetli Kişi",
-            "password": "DavetliParola7!",
-        },
-    )
-    assert accepted.status_code == 201, accepted.text
-    login = client.post("/api/v1/auth/login", json={"email": email, "password": "DavetliParola7!"})
-    assert login.status_code == 200, login.text
-    payload: dict[str, object] = login.json()
-    return payload
-
-
-def test_removed_member_token_is_rejected_immediately(client: TestClient) -> None:
+async def test_removed_member_token_is_rejected_immediately(
+    client: TestClient, test_settings: Settings
+) -> None:
     owner = create_org_and_login(client, "revoke-member", "o@revoke-member.example")
-    member = _invite_and_login(client, owner, "m@revoke-member.example", "analyst")
+    member = await invite_and_login(
+        client, test_settings, owner, "m@revoke-member.example", "analyst"
+    )
     assert client.get("/api/v1/organizations/current", headers=_h(member)).status_code == 200
 
     members = client.get("/api/v1/organizations/current/members", headers=_h(owner)).json()
@@ -72,9 +52,11 @@ def test_removed_member_token_is_rejected_immediately(client: TestClient) -> Non
     assert after.json()["error"]["code"] == "SESSION_REVOKED"
 
 
-def test_role_demotion_applies_to_existing_token(client: TestClient) -> None:
+async def test_role_demotion_applies_to_existing_token(
+    client: TestClient, test_settings: Settings
+) -> None:
     owner = create_org_and_login(client, "demote-member", "o@demote-member.example")
-    admin = _invite_and_login(client, owner, "a@demote-member.example", "admin")
+    admin = await invite_and_login(client, test_settings, owner, "a@demote-member.example", "admin")
     ok = client.patch(
         "/api/v1/organizations/current", json={"name": "Yeni Ad A.Ş."}, headers=_h(admin)
     )
@@ -154,7 +136,9 @@ async def test_evidence_requires_evidence_permission(
     assert owner_view["evidence_restricted"] is False
     assert len(owner_view["evidence"]) == 1
 
-    analyst = _invite_and_login(client, owner, "an@evidence-perm.example", "analyst")
+    analyst = await invite_and_login(
+        client, test_settings, owner, "an@evidence-perm.example", "analyst"
+    )
     analyst_view = client.get(f"/api/v1/safety-events/{event_id}", headers=_h(analyst))
     assert analyst_view.status_code == 200
     assert analyst_view.json()["evidence_restricted"] is True

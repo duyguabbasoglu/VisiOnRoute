@@ -7,7 +7,7 @@ import sys
 from fastapi.testclient import TestClient
 
 from tests.conftest import REPO_ROOT
-from tests.helpers import create_org_and_login
+from tests.helpers import create_org_and_login, invite_and_login
 from visionroute.config.settings import Settings
 
 
@@ -39,24 +39,11 @@ def test_vehicle_limit_enforced(client: TestClient) -> None:
     assert "Araç limiti aşıldı" in over.json()["error"]["message"]
 
 
-def test_user_limit_enforced(client: TestClient) -> None:
+async def test_user_limit_enforced(client: TestClient, test_settings: Settings) -> None:
     owner = create_org_and_login(client, "saas-users", "o@saas-users.example")
     # Starter plan allows 5 memberships; the owner already occupies one.
     for i in range(4):
-        invitation = client.post(
-            "/api/v1/organizations/current/invitations",
-            json={"email": f"u{i}@saas-users.example", "role": "analyst"},
-            headers=_h(owner),
-        ).json()
-        accept = client.post(
-            "/api/v1/auth/invitations/accept",
-            json={
-                "token": invitation["invitation_token"],
-                "full_name": f"Kullanıcı {i}",
-                "password": "DavetliParola7!",
-            },
-        )
-        assert accept.status_code == 201
+        await invite_and_login(client, test_settings, owner, f"u{i}@saas-users.example", "analyst")
 
     over = client.post(
         "/api/v1/organizations/current/invitations",
@@ -135,4 +122,6 @@ def test_platform_admin_endpoints_and_rbac(client: TestClient, test_settings: Se
         "outbox_dead_letter",
         "ingest_quarantined",
         "webhook_dead_letter",
+        "email_pending",
+        "email_dead_letter",
     }

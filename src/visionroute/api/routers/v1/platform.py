@@ -23,6 +23,7 @@ from visionroute.application.saas.service import SubscriptionService
 from visionroute.domain.permissions import Permission
 from visionroute.infrastructure.db.models.identity import Membership, Organization
 from visionroute.infrastructure.db.models.ingestion import IngestEvent
+from visionroute.infrastructure.db.models.mail import EmailMessage
 from visionroute.infrastructure.db.models.notifications import WebhookDelivery
 from visionroute.infrastructure.db.models.saas import Plan, Subscription
 from visionroute.infrastructure.db.models.system import OutboxEvent
@@ -76,6 +77,8 @@ class PlatformHealthOut(BaseModel):
     outbox_dead_letter: int
     ingest_quarantined: int
     webhook_dead_letter: int
+    email_pending: int
+    email_dead_letter: int
 
 
 @router.get("/platform/organizations", response_model=list[PlatformOrgOut])
@@ -183,5 +186,11 @@ async def platform_health(
         ),
         webhook_dead_letter=await count(
             select(func.count()).where(WebhookDelivery.status == "dead_letter")
+        ),
+        email_pending=await count(
+            select(func.count()).where(EmailMessage.status.in_(("pending", "sending")))
+        ),
+        email_dead_letter=await count(
+            select(func.count()).where(EmailMessage.status == "dead_letter")
         ),
     )
