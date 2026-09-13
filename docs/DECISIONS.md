@@ -14,3 +14,17 @@ Ayrıntılı ADR'ler `docs/adr/` altındadır. Bu dosya özet dizindir.
 | 0008 | LLM kullanımı varsayılan **kapalı**; yalnızca şema doğrulamalı, kanıt-temelli, sınırlandırılmış görevler | Spesifikasyon 5.3 |
 | 0009 | Faturalama: sağlayıcı soyutlaması + manuel fatura modu varsayılan; Stripe adaptörü yalnızca yapılandırıldığında | Türk kurumsal satış gerçeği; kart verisi saklanmaz |
 | 0010 | Kiracı izolasyonu: uygulama katmanı + PostgreSQL RLS (oturum değişkeni `app.tenant_id`) çift katman | Derinlemesine savunma |
+
+## 2026-09 tamamlama geçişi kararları
+
+| Karar | Gerekçe |
+|-------|---------|
+| import-linter katmanları: `cli` en üstte, `api \| worker \| scheduler` altında | CLI süreçlerin kompozisyon köküdür (worker ve scheduler'ı başlatır). Önceki sözleşme `cli`'yi bu modüllerle kardeş katmana koyduğu için temel hatta zaten KIRIKTI; kural gevşetilmedi, gerçek bağımlılık yönü tanımlandı |
+| Her kimlik doğrulamalı istekte üyelik/rol veritabanından yeniden doğrulanır | Access token 15 dk yaşar; üyelikten çıkarılan, rolü düşürülen veya devre dışı bırakılan kullanıcı eski yetkisini token süresi dolana kadar koruyordu. İstek başına tek indeksli sorgu maliyeti kabul edildi |
+| Worker her outbox olayını kendi SAVEPOINT'inde işler; webhook teslimatı ayrı işlemde | Tek bir veritabanı hatası tüm partiyi geri alıyor ve `attempts` hiç artmadığı için dead-letter'a ulaşılamıyordu (sonsuz zehirli döngü). Ağ çağrıları outbox kilitlerini tutmamalı |
+| Scheduler turu `pg_try_advisory_xact_lock` ile tekilleştirilir | Rolling deploy veya yanlışlıkla çoklu replika çift çalıştırma üretmemeli |
+| Güvenlik olayı tekilleştirme: sabit 30 sn saat kovası yerine ±30 sn kayan pencere + araç/tip bazlı advisory lock | Sabit kova 5 sn arayla gelen iki sert freni kova sınırında iki olaya bölüyordu (test ~1/6 oranında kırmızıydı) |
+| Kanıt yükü `events.evidence.read` izni ister | `events.read` (ör. analist) kanıtı görmemeli; izin kataloğu bunu zaten ayırıyordu ancak uç nokta zorlamıyordu |
+| CSV raporlarında kiracı kontrollü metin formül enjeksiyonuna karşı `'` ile öneklenir | OWASP CSV injection |
+| İstek gövdesi boyut sınırı (varsayılan 12 MiB) ASGI katmanında | Uvicorn varsayılan olarak sınır uygulamaz; chunked gövdeler dahil |
+| `X-Request-ID` yalnızca `[A-Za-z0-9._:-]{1,64}` ise kabul edilir | İstemci değeri loglara ve yanıta yansıtılıyordu (log enjeksiyonu) |

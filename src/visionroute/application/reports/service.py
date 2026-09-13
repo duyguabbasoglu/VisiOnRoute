@@ -10,7 +10,7 @@ import csv
 import io
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
@@ -38,6 +38,20 @@ _LIMITATIONS_TR = (
 )
 
 
+_MAX_REPORT_ROWS = 5000
+
+# Spreadsheet applications evaluate cells starting with these characters as
+# formulas (CSV/formula injection, OWASP). Tenant-controlled text is prefixed
+# with an apostrophe so it is always rendered as literal text.
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def csv_safe(value: str) -> str:
+    if value.startswith(_FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
+
 @dataclass(frozen=True)
 class ReportMeta:
     organization_name: str
@@ -56,16 +70,17 @@ class ReportService:
         self, tenant_id: uuid.UUID, window_days: int
     ) -> tuple[ReportMeta, list[SafetyEvent]]:
         organization = await self._db.get(Organization, tenant_id)
+        since = datetime.now(UTC) - timedelta(days=window_days)
         events_result = await self._db.execute(
             select(SafetyEvent)
-            .where(SafetyEvent.organization_id == tenant_id)
+            .where(SafetyEvent.organization_id == tenant_id, SafetyEvent.occurred_at >= since)
             .order_by(SafetyEvent.occurred_at.desc())
-            .limit(5000)
+            .limit(_MAX_REPORT_ROWS)
         )
         events = list(events_result.scalars())
         distance = await self._db.execute(
             select(func.coalesce(func.sum(Trip.distance_km), 0.0)).where(
-                Trip.organization_id == tenant_id
+                Trip.organization_id == tenant_id, Trip.started_at >= since
             )
         )
         meta = ReportMeta(
@@ -84,10 +99,13 @@ class ReportService:
         writer = csv.writer(buffer)
         # Metadata block (as comment-style rows) before the header.
         writer.writerow(["# Rapor", "Güvenlik Olayları"])
-        writer.writerow(["# Organizasyon", meta.organization_name])
+        writer.writerow(["# Organizasyon", csv_safe(meta.organization_name)])
         writer.writerow(["# Üretim zamanı (UTC)", meta.generated_at.isoformat()])
+        writer.writerow(["# Kapsam", f"Son {window_days} gün"])
         writer.writerow(["# Kapsanan toplam mesafe (km)", meta.total_distance_km])
         writer.writerow(["# Olay sayısı", meta.event_count])
+        if meta.event_count >= _MAX_REPORT_ROWS:
+            writer.writerow(["# Uyarı", f"Rapor en yeni {_MAX_REPORT_ROWS} olayla sınırlandı."])
         writer.writerow(["# Metodoloji", _METHODOLOGY_TR])
         writer.writerow(["# Sınırlamalar", _LIMITATIONS_TR])
         writer.writerow([])
@@ -111,8 +129,8 @@ class ReportService:
             writer.writerow(
                 [
                     str(event.id),
-                    event.event_type,
-                    _label(event.event_type),
+                    csv_safe(event.event_type),
+                    csv_safe(_label(event.event_type)),
                     event.severity,
                     event.confidence,
                     event.occurred_at.isoformat(),

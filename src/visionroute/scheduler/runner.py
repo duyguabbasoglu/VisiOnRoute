@@ -3,12 +3,15 @@
 - ensure_telemetry_partitions: pre-create next months' partitions so inserts
   never fall into the DEFAULT partition unexpectedly.
 - close_stale_trips: mark trips with no telemetry within the idle gap as stale.
+
+Several scheduler replicas may run (rolling deploys, accidental scale-out); a
+transaction-scoped PostgreSQL advisory lock guarantees only one executes a tick.
 """
 
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -22,9 +25,14 @@ from visionroute.observability.logging import get_logger
 
 logger = get_logger("visionroute.scheduler")
 
+# Arbitrary, stable 64-bit key for pg_try_advisory_xact_lock ("VRSCHED").
+SCHEDULER_LOCK_KEY = 0x5652534348454400
+_PARTITION_MONTHS_AHEAD = 3
+
 
 class Scheduler:
     def __init__(self, settings: Settings) -> None:
+        self._settings = settings
         self._engine = build_engine(settings)
         self._factory: async_sessionmaker[AsyncSession] = build_session_factory(self._engine)
         self._stopping = False
@@ -33,47 +41,61 @@ class Scheduler:
         logger.info("scheduler_started")
         try:
             while not self._stopping:
-                await self.run_once()
+                try:
+                    await self.run_once()
+                except Exception:
+                    # A failed tick must not kill the loop; the next tick retries.
+                    logger.exception("scheduler_tick_failed")
                 await asyncio.sleep(interval)
         finally:
             await self._engine.dispose()
             logger.info("scheduler_stopped")
 
-    async def run_once(self) -> None:
+    async def run_once(self) -> bool:
+        """Run one tick. Returns False when another replica holds the lock."""
         async with self._factory() as session:
             await set_rls_bypass(session)
+            acquired = (
+                await session.execute(
+                    text("SELECT pg_try_advisory_xact_lock(:key)"), {"key": SCHEDULER_LOCK_KEY}
+                )
+            ).scalar_one()
+            if not acquired:
+                logger.info("scheduler_tick_skipped", reason="lock_held")
+                return False
             created = await self._ensure_partitions(session)
             stale = await self._close_stale_trips(session)
             await session.commit()
             logger.info("scheduler_tick", partitions_created=created, trips_marked_stale=stale)
+            return True
 
     async def _ensure_partitions(self, session: AsyncSession) -> int:
-        """Create the next 3 months of telemetry partitions if missing."""
-        result = await session.execute(
-            text(
-                """
-                DO $$
-                DECLARE
-                    m date := date_trunc('month', now())::date;
-                    i int; p_start date; p_end date; p_name text; made int := 0;
-                BEGIN
-                    FOR i IN 0..2 LOOP
-                        p_start := (m + (i || ' month')::interval)::date;
-                        p_end := (m + ((i + 1) || ' month')::interval)::date;
-                        p_name := 'telemetry_points_' || to_char(p_start, 'YYYYMM');
-                        IF to_regclass(p_name) IS NULL THEN
-                            EXECUTE format(
-                                'CREATE TABLE %I PARTITION OF telemetry_points '
-                                'FOR VALUES FROM (%L) TO (%L)', p_name, p_start, p_end
-                            );
-                        END IF;
-                    END LOOP;
-                END $$
-                """
-            )
-        )
-        _ = result
-        return 0
+        """Create the next months of telemetry partitions if missing."""
+        today = datetime.now(UTC).date()
+        created = 0
+        for offset in range(_PARTITION_MONTHS_AHEAD):
+            start = _add_months(today.replace(day=1), offset)
+            end = _add_months(start, 1)
+            name = f"telemetry_points_{start:%Y%m}"
+            exists = (
+                await session.execute(text("SELECT to_regclass(:name)"), {"name": name})
+            ).scalar_one()
+            if exists is not None:
+                continue
+            # Identifier/literals are quoted by PostgreSQL's format(), never
+            # by string interpolation.
+            ddl = (
+                await session.execute(
+                    text(
+                        "SELECT format('CREATE TABLE %I PARTITION OF telemetry_points "
+                        "FOR VALUES FROM (%L) TO (%L)', :name, :start, :end)"
+                    ),
+                    {"name": name, "start": start.isoformat(), "end": end.isoformat()},
+                )
+            ).scalar_one()
+            await session.execute(text(ddl))
+            created += 1
+        return created
 
     async def _close_stale_trips(self, session: AsyncSession) -> int:
         cutoff = datetime.now(UTC) - TRIP_IDLE_GAP
@@ -86,3 +108,8 @@ class Scheduler:
 
     def stop(self) -> None:
         self._stopping = True
+
+
+def _add_months(day: date, months: int) -> date:
+    month_index = day.month - 1 + months
+    return day.replace(year=day.year + month_index // 12, month=month_index % 12 + 1)

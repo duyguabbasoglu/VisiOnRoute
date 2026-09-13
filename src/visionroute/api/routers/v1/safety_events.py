@@ -75,6 +75,7 @@ class SafetyEventDetail(SafetyEventOut):
     ruleset_version: int
     severity_framework_version: int
     evidence: list[EvidenceOut]
+    evidence_restricted: bool = False
 
 
 class SafetyEventList(BaseModel):
@@ -164,20 +165,28 @@ async def get_safety_event(
     if event is None or event.organization_id != tenant_id:
         raise NotFoundError("Güvenlik olayı bulunamadı.")
 
-    evidence_rows = await db.execute(
-        select(EventEvidence)
-        .where(EventEvidence.safety_event_id == event_id)
-        .order_by(EventEvidence.created_at)
-    )
-    evidence = [
-        EvidenceOut(
-            id=str(ev.id),
-            kind=ev.kind,
-            telemetry_window=ev.telemetry_window,
-            captured_at=ev.captured_at,
+    # Evidence is personal data with its own permission; EVENTS_READ alone
+    # (e.g. analysts) sees the explanation but not the evidence payload.
+    evidence_restricted = not ctx.has_permission(Permission.EVIDENCE_READ)
+    evidence: list[EvidenceOut] = []
+    if not evidence_restricted:
+        evidence_rows = await db.execute(
+            select(EventEvidence)
+            .where(
+                EventEvidence.safety_event_id == event_id,
+                EventEvidence.organization_id == tenant_id,
+            )
+            .order_by(EventEvidence.created_at)
         )
-        for ev in evidence_rows.scalars()
-    ]
+        evidence = [
+            EvidenceOut(
+                id=str(ev.id),
+                kind=ev.kind,
+                telemetry_window=ev.telemetry_window,
+                captured_at=ev.captured_at,
+            )
+            for ev in evidence_rows.scalars()
+        ]
 
     base = _to_out(event)
     explanation = Explanation(
@@ -202,6 +211,7 @@ async def get_safety_event(
         ruleset_version=event.ruleset_version,
         severity_framework_version=event.severity_framework_version,
         evidence=evidence,
+        evidence_restricted=evidence_restricted,
     )
 
 

@@ -8,7 +8,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import ORJSONResponse
 
 from visionroute import __version__
 from visionroute.api.errors import register_error_handlers
@@ -61,7 +60,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         description="Sürücü davranışlarını ve yol koşullarını analiz eden ulaşım "
         "güvenliği platformu API'si.",
         version=__version__,
-        default_response_class=ORJSONResponse,
         lifespan=lifespan,
         docs_url="/api/docs" if not settings.environment.is_production_like else None,
         redoc_url=None,

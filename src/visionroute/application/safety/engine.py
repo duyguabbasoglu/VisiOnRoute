@@ -1,17 +1,19 @@
 """Safety-event engine: evaluate a telemetry point, dedup, persist with evidence.
 
 Called by the worker right after a telemetry point is created. Deduplication
-collapses repeated hits of the same (vehicle, type) within a coarse time bucket
-into one event with an incremented occurrence_count.
+collapses repeated hits of the same (vehicle, type) that occur within ±30
+seconds of an existing event into that event (occurrence_count is
+incremented). A sliding window is used instead of fixed clock buckets, which
+split hits seconds apart whenever they straddled a bucket boundary.
 """
 
 from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,8 +28,8 @@ from visionroute.domain.safety import (
 )
 from visionroute.infrastructure.db.models.safety import EventEvidence, SafetyEvent
 
-# Coarse time bucket for deduplication (seconds).
-_DEDUP_BUCKET_SECONDS = 30
+# Hits of the same type for the same vehicle within this window are one event.
+_DEDUP_WINDOW = timedelta(seconds=30)
 
 
 @dataclass(frozen=True)
@@ -60,9 +62,36 @@ class SafetyEngine:
     async def _persist(
         self, ctx: PointContext, hit: RuleHit, sample: TelemetrySample
     ) -> uuid.UUID | None:
-        bucket = int(ctx.occurred_at.timestamp()) // _DEDUP_BUCKET_SECONDS
-        dedup_key = f"{ctx.vehicle_id}:{hit.event_type.value}:{bucket}"
+        # Serialize writers for the same (vehicle, event type) until the
+        # transaction ends, so the window lookup and the insert are atomic
+        # even when several workers process the same vehicle concurrently.
+        await self._db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+            {"key": f"safety-dedup:{ctx.vehicle_id}:{hit.event_type.value}"},
+        )
+        existing = (
+            await self._db.execute(
+                select(SafetyEvent)
+                .where(
+                    SafetyEvent.organization_id == ctx.organization_id,
+                    SafetyEvent.vehicle_id == ctx.vehicle_id,
+                    SafetyEvent.event_type == hit.event_type.value,
+                    SafetyEvent.occurred_at >= ctx.occurred_at - _DEDUP_WINDOW,
+                    SafetyEvent.occurred_at <= ctx.occurred_at + _DEDUP_WINDOW,
+                )
+                .order_by(SafetyEvent.occurred_at)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            existing.occurrence_count += 1
+            return existing.id
 
+        # Exact-instant key: identical replays of the same sample still collapse
+        # through the unique constraint instead of failing.
+        dedup_key = (
+            f"{ctx.vehicle_id}:{hit.event_type.value}:{int(ctx.occurred_at.timestamp() * 1000)}"
+        )
         new_id = uuid.uuid4()
         stmt = (
             pg_insert(SafetyEvent)

@@ -15,14 +15,16 @@ from collections.abc import AsyncIterator
 from typing import Annotated, Any
 
 from fastapi import Depends, Request
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from visionroute.api.errors import ForbiddenError, UnauthorizedError
 from visionroute.application.context import RequestContext
 from visionroute.config.settings import Settings
 from visionroute.domain.permissions import Permission, RoleKey
+from visionroute.infrastructure.db.models.identity import Membership, User
 from visionroute.infrastructure.db.tenancy import set_rls_bypass, set_tenant
-from visionroute.infrastructure.security.tokens import JwtService, TokenError
+from visionroute.infrastructure.security.tokens import AccessTokenClaims, JwtService, TokenError
 
 
 def get_app_settings(request: Request) -> Settings:
@@ -66,7 +68,42 @@ def _client_ip(request: Request) -> str | None:
         return None
 
 
-def get_current_context(
+_SESSION_REVOKED_MESSAGE = "Oturumunuz artık geçerli değil. Lütfen yeniden giriş yapın."
+
+
+async def _authoritative_access(
+    request: Request, claims: AccessTokenClaims
+) -> tuple[RoleKey | None, bool]:
+    """Re-validate the token subject against the database on every request.
+
+    Access tokens live up to 15 minutes; trusting their claims alone would let
+    a removed member, a demoted role or a disabled account keep its previous
+    privileges until expiry. The database role is authoritative.
+    """
+    async with _session_factory(request)() as session:
+        await set_rls_bypass(session)
+        user = await session.get(User, claims.user_id)
+        if user is None or user.status != "active":
+            raise UnauthorizedError(_SESSION_REVOKED_MESSAGE, code="SESSION_REVOKED")
+        role: RoleKey | None = None
+        if claims.organization_id is not None:
+            role_key = (
+                await session.execute(
+                    select(Membership.role_key).where(
+                        Membership.user_id == claims.user_id,
+                        Membership.organization_id == claims.organization_id,
+                        Membership.status == "active",
+                    )
+                )
+            ).scalar_one_or_none()
+            if role_key is None:
+                raise UnauthorizedError(_SESSION_REVOKED_MESSAGE, code="SESSION_REVOKED")
+            role = RoleKey(role_key)
+        is_platform_admin = claims.is_platform_admin and user.platform_role == "super_admin"
+        return role, is_platform_admin
+
+
+async def get_current_context(
     request: Request,
     jwt_service: Annotated[JwtService, Depends(get_jwt_service)],
 ) -> RequestContext:
@@ -77,11 +114,12 @@ def get_current_context(
         claims = jwt_service.verify_access_token(auth_header.removeprefix("Bearer "))
     except TokenError as exc:
         raise UnauthorizedError from exc
+    role, is_platform_admin = await _authoritative_access(request, claims)
     return RequestContext(
         user_id=claims.user_id,
         organization_id=claims.organization_id,
-        role=RoleKey(claims.role) if claims.role else None,
-        is_platform_admin=claims.is_platform_admin,
+        role=role,
+        is_platform_admin=is_platform_admin,
         actor_label=str(claims.user_id),
         request_id=getattr(request.state, "request_id", None),
         ip_address=_client_ip(request),
