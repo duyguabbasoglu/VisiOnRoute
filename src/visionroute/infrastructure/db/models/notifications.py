@@ -76,8 +76,7 @@ class Notification(IdMixin, Base):
 
 class WebhookEndpoint(IdMixin, TimestampMixin, Base):
     """Outbound webhook target. The signing secret enables HMAC signatures on
-    deliveries; at-rest protection relies on database encryption — move to
-    KMS/field encryption before production (tracked in HANDOVER.md)."""
+    deliveries and is stored field-encrypted (see security/crypto.py)."""
 
     __tablename__ = "webhook_endpoints"
 
@@ -86,7 +85,9 @@ class WebhookEndpoint(IdMixin, TimestampMixin, Base):
     )
     url: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str | None] = mapped_column(String(300))
-    secret: Mapped[str] = mapped_column(String(100), nullable=False)
+    # HMAC signing secret, field-encrypted (enc1:<key_id>:<token>); decrypted
+    # only in memory at signing time and never returned after creation/rotation.
+    secret_enc: Mapped[str] = mapped_column(Text, nullable=False)
     active: Mapped[bool] = mapped_column(nullable=False, server_default="true")
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_failure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

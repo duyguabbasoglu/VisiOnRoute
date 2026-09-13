@@ -15,6 +15,8 @@ from visionroute.api.middleware import register_middleware
 from visionroute.api.routers.health import router as health_router
 from visionroute.config.settings import Settings, get_settings
 from visionroute.infrastructure.db.engine import build_engine, build_session_factory
+from visionroute.infrastructure.ratelimit import build_rate_limiter
+from visionroute.infrastructure.security.crypto import FieldEncryptionError, build_field_cipher
 from visionroute.infrastructure.security.tokens import JwtService, TokenError
 from visionroute.observability.logging import configure_logging, get_logger
 
@@ -42,6 +44,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.db_engine = build_engine(settings)
         app.state.db_session_factory = build_session_factory(app.state.db_engine)
         app.state.settings = settings
+        app.state.rate_limiter = build_rate_limiter(settings)
+        try:
+            app.state.field_cipher = build_field_cipher(settings)
+        except FieldEncryptionError:
+            # Production-like startup already refused invalid key config above.
+            app.state.field_cipher = None
+            logger.warning("field_cipher_unavailable")
+        if app.state.field_cipher is None:
+            logger.warning("field_encryption_not_configured")
         try:
             app.state.jwt_service = JwtService(settings)
         except (TokenError, OSError):
@@ -52,6 +63,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            await app.state.rate_limiter.close()
             await app.state.db_engine.dispose()
             logger.info("api_stopped")
 

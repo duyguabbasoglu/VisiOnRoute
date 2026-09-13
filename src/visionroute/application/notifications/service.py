@@ -19,6 +19,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from visionroute.application.ports import FieldEncryptor
 from visionroute.domain.safety import (
     EVENT_LABELS_TR,
     SEVERITY_LABELS_TR,
@@ -31,6 +32,7 @@ from visionroute.infrastructure.db.models.notifications import (
     WebhookDelivery,
     WebhookEndpoint,
 )
+from visionroute.infrastructure.security.crypto import FieldEncryptionError
 from visionroute.infrastructure.security.urlguard import UnsafeUrlError, UrlPolicy, validate_url
 from visionroute.observability.logging import get_logger
 
@@ -56,8 +58,10 @@ def sign_payload(secret: str, body: bytes, timestamp: int) -> str:
 
 
 class NotificationService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, cipher: FieldEncryptor | None = None) -> None:
         self._db = session
+        # Only delivery needs the cipher (to decrypt signing secrets).
+        self._cipher = cipher
 
     # ------------------------------------------------------------- evaluation
 
@@ -179,8 +183,14 @@ class NotificationService:
         try:
             # SSRF re-validation right before send (DNS may have changed).
             validate_url(endpoint.url, policy=policy)
+            if self._cipher is None:
+                raise RuntimeError("Alan şifreleme anahtarı yapılandırılmamış; imza üretilemedi.")
+            try:
+                secret = self._cipher.decrypt(endpoint.secret_enc)
+            except FieldEncryptionError as exc:
+                raise RuntimeError(str(exc)) from exc
             timestamp = int(time.time())
-            signature = sign_payload(endpoint.secret, body, timestamp)
+            signature = sign_payload(secret, body, timestamp)
             async with httpx.AsyncClient(timeout=_DELIVERY_TIMEOUT_SECONDS) as client:
                 response = await client.post(
                     endpoint.url,

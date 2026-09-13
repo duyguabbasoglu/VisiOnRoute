@@ -20,6 +20,7 @@ from sqlalchemy import func, select
 from visionroute.api.deps import (
     TenantSession,
     get_app_settings,
+    get_field_cipher,
     require_permission,
 )
 from visionroute.api.errors import ForbiddenError, NotFoundError
@@ -40,6 +41,7 @@ from visionroute.infrastructure.db.models.notifications import (
 )
 from visionroute.infrastructure.db.models.safety import SafetyEvent
 from visionroute.infrastructure.db.models.telemetry import Trip
+from visionroute.infrastructure.security.crypto import FieldCipher
 from visionroute.infrastructure.security.urlguard import UnsafeUrlError, validate_url
 
 router = APIRouter(tags=["notifications-reports"])
@@ -173,8 +175,50 @@ class WebhookOut(BaseModel):
     active: bool
     last_success_at: datetime | None
     last_failure_at: datetime | None
-    # Shown once at creation so the receiver can verify signatures.
+    # Shown once at creation/rotation so the receiver can verify signatures.
     secret: str | None = None
+
+
+class WebhookUpdate(BaseModel):
+    active: bool | None = None
+    description: str | None = Field(default=None, max_length=300)
+
+
+class WebhookDeliveryOut(BaseModel):
+    id: str
+    event_type: str
+    status: str
+    attempts: int
+    response_status: int | None
+    last_error: str | None
+    created_at: datetime
+    next_attempt_at: datetime
+    delivered_at: datetime | None
+
+
+def _new_webhook_secret() -> str:
+    return f"whsec_{secrets.token_urlsafe(24)}"
+
+
+def _webhook_out(endpoint: WebhookEndpoint, secret: str | None = None) -> WebhookOut:
+    return WebhookOut(
+        id=str(endpoint.id),
+        url=endpoint.url,
+        description=endpoint.description,
+        active=endpoint.active,
+        last_success_at=endpoint.last_success_at,
+        last_failure_at=endpoint.last_failure_at,
+        secret=secret,
+    )
+
+
+async def _load_webhook(
+    db: TenantSession, ctx: RequestContext, webhook_id: uuid.UUID
+) -> WebhookEndpoint:
+    endpoint = await db.get(WebhookEndpoint, webhook_id)
+    if endpoint is None or endpoint.organization_id != _tenant(ctx):
+        raise NotFoundError("Webhook bulunamadı.")
+    return endpoint
 
 
 @router.post("/webhooks", status_code=status.HTTP_201_CREATED, response_model=WebhookOut)
@@ -183,6 +227,7 @@ async def create_webhook(
     db: TenantSession,
     ctx: Annotated[RequestContext, require_permission(Permission.NOTIFICATIONS_MANAGE)],
     settings: Annotated[Settings, Depends(get_app_settings)],
+    cipher: Annotated[FieldCipher, Depends(get_field_cipher)],
 ) -> WebhookOut:
     policy = PROD_URL_POLICY if settings.environment.is_production_like else DEV_URL_POLICY
     try:
@@ -192,11 +237,12 @@ async def create_webhook(
 
         raise ValidationFailedError([str(exc)]) from exc
 
+    secret = _new_webhook_secret()
     endpoint = WebhookEndpoint(
         organization_id=_tenant(ctx),
         url=body.url,
         description=body.description,
-        secret=f"whsec_{secrets.token_urlsafe(24)}",
+        secret_enc=cipher.encrypt(secret),
     )
     db.add(endpoint)
     await db.flush()
@@ -208,15 +254,7 @@ async def create_webhook(
         resource_id=str(endpoint.id),
         data={"url": body.url},
     )
-    return WebhookOut(
-        id=str(endpoint.id),
-        url=endpoint.url,
-        description=endpoint.description,
-        active=endpoint.active,
-        last_success_at=None,
-        last_failure_at=None,
-        secret=endpoint.secret,
-    )
+    return _webhook_out(endpoint, secret)
 
 
 @router.get("/webhooks", response_model=list[WebhookOut])
@@ -225,18 +263,110 @@ async def list_webhooks(
     ctx: Annotated[RequestContext, require_permission(Permission.NOTIFICATIONS_MANAGE)],
 ) -> list[WebhookOut]:
     result = await db.execute(
-        select(WebhookEndpoint).where(WebhookEndpoint.organization_id == _tenant(ctx))
+        select(WebhookEndpoint)
+        .where(WebhookEndpoint.organization_id == _tenant(ctx))
+        .order_by(WebhookEndpoint.created_at.desc())
+    )
+    return [_webhook_out(w) for w in result.scalars()]
+
+
+@router.patch("/webhooks/{webhook_id}", response_model=WebhookOut)
+async def update_webhook(
+    webhook_id: uuid.UUID,
+    body: WebhookUpdate,
+    db: TenantSession,
+    ctx: Annotated[RequestContext, require_permission(Permission.NOTIFICATIONS_MANAGE)],
+) -> WebhookOut:
+    endpoint = await _load_webhook(db, ctx, webhook_id)
+    changes: dict[str, object] = {}
+    if body.active is not None:
+        endpoint.active = body.active
+        changes["active"] = body.active
+    if body.description is not None:
+        endpoint.description = body.description
+        changes["description"] = body.description
+    if changes:
+        await record_audit(
+            db,
+            ctx,
+            action="webhook.updated",
+            resource_type="webhook_endpoint",
+            resource_id=str(endpoint.id),
+            data=changes,
+        )
+    return _webhook_out(endpoint)
+
+
+@router.post("/webhooks/{webhook_id}/rotate-secret", response_model=WebhookOut)
+async def rotate_webhook_secret(
+    webhook_id: uuid.UUID,
+    db: TenantSession,
+    ctx: Annotated[RequestContext, require_permission(Permission.NOTIFICATIONS_MANAGE)],
+    cipher: Annotated[FieldCipher, Depends(get_field_cipher)],
+) -> WebhookOut:
+    """İmza sırrını yeniler; yeni sır yalnızca bu yanıtta bir kez gösterilir."""
+    endpoint = await _load_webhook(db, ctx, webhook_id)
+    secret = _new_webhook_secret()
+    endpoint.secret_enc = cipher.encrypt(secret)
+    await record_audit(
+        db,
+        ctx,
+        action="webhook.secret_rotated",
+        resource_type="webhook_endpoint",
+        resource_id=str(endpoint.id),
+    )
+    return _webhook_out(endpoint, secret)
+
+
+@router.delete("/webhooks/{webhook_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_webhook(
+    webhook_id: uuid.UUID,
+    db: TenantSession,
+    ctx: Annotated[RequestContext, require_permission(Permission.NOTIFICATIONS_MANAGE)],
+) -> None:
+    endpoint = await _load_webhook(db, ctx, webhook_id)
+    await db.delete(endpoint)
+    await record_audit(
+        db,
+        ctx,
+        action="webhook.deleted",
+        resource_type="webhook_endpoint",
+        resource_id=str(webhook_id),
+        data={"url": endpoint.url},
+    )
+
+
+@router.get("/webhooks/{webhook_id}/deliveries", response_model=list[WebhookDeliveryOut])
+async def list_webhook_deliveries(
+    webhook_id: uuid.UUID,
+    db: TenantSession,
+    ctx: Annotated[RequestContext, require_permission(Permission.NOTIFICATIONS_MANAGE)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> list[WebhookDeliveryOut]:
+    """Son teslimat denemeleri (başarısız/ölü-mektup görünürlüğü için)."""
+    endpoint = await _load_webhook(db, ctx, webhook_id)
+    result = await db.execute(
+        select(WebhookDelivery)
+        .where(
+            WebhookDelivery.endpoint_id == endpoint.id,
+            WebhookDelivery.organization_id == _tenant(ctx),
+        )
+        .order_by(WebhookDelivery.created_at.desc())
+        .limit(limit)
     )
     return [
-        WebhookOut(
-            id=str(w.id),
-            url=w.url,
-            description=w.description,
-            active=w.active,
-            last_success_at=w.last_success_at,
-            last_failure_at=w.last_failure_at,
+        WebhookDeliveryOut(
+            id=str(d.id),
+            event_type=d.event_type,
+            status=d.status,
+            attempts=d.attempts,
+            response_status=d.response_status,
+            last_error=d.last_error,
+            created_at=d.created_at,
+            next_attempt_at=d.next_attempt_at,
+            delivered_at=d.delivered_at,
         )
-        for w in result.scalars()
+        for d in result.scalars()
     ]
 
 

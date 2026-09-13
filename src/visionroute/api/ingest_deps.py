@@ -16,8 +16,10 @@ from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from visionroute.api.errors import ForbiddenError, UnauthorizedError
+from visionroute.api.ratelimit import enforce_rate_limit
 from visionroute.application.api_clients.service import INGEST_SCOPE, ApiClientService
 from visionroute.application.context import RequestContext
+from visionroute.config.settings import Settings
 from visionroute.infrastructure.db.tenancy import set_rls_bypass, set_tenant
 
 
@@ -44,6 +46,14 @@ async def _authenticate(request: Request) -> IngestPrincipal:
         raise UnauthorizedError("API anahtarı geçersiz veya süresi dolmuş.", code="API_KEY_INVALID")
     if INGEST_SCOPE not in verified.scopes:
         raise ForbiddenError("Bu anahtar veri alımı için yetkili değil.", code="SCOPE_MISSING")
+    settings: Settings = request.app.state.settings
+    await enforce_rate_limit(
+        request,
+        scope="ingest:client",
+        identity=str(verified.api_client_id),
+        limit=settings.ingest_rate_limit_per_minute,
+        window_seconds=60,
+    )
     return IngestPrincipal(
         organization_id=verified.organization_id,
         api_client_id=verified.api_client_id,

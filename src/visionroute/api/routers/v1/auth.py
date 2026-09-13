@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Cookie, Depends, Response, status
+from fastapi import APIRouter, Cookie, Depends, Request, Response, status
 from pydantic import BaseModel, EmailStr, Field
 
 from visionroute.api.deps import (
@@ -15,6 +15,7 @@ from visionroute.api.deps import (
     get_jwt_service,
 )
 from visionroute.api.errors import UnauthorizedError
+from visionroute.api.ratelimit import client_identity, enforce_rate_limit
 from visionroute.application.identity.service import AuthenticatedUser, IdentityService
 from visionroute.config.settings import Settings
 from visionroute.domain.permissions import ROLE_LABELS_TR, RoleKey
@@ -104,6 +105,7 @@ def _issue(
 @router.post("/register", status_code=status.HTTP_201_CREATED, response_model=AuthResponse)
 async def register(
     body: RegisterRequest,
+    request: Request,
     response: Response,
     db: PlatformSession,
     ctx: AnonymousContext,
@@ -111,6 +113,13 @@ async def register(
     jwt_service: Annotated[JwtService, Depends(get_jwt_service)],
 ) -> AuthResponse:
     """Yeni organizasyon kaydı: organizasyonu ve sahibini birlikte oluşturur."""
+    await enforce_rate_limit(
+        request,
+        scope="register:ip",
+        identity=client_identity(request),
+        limit=settings.register_rate_limit_per_hour,
+        window_seconds=3600,
+    )
     service = IdentityService(db, settings.refresh_token_ttl_seconds)
     await service.register_organization(
         ctx,
@@ -127,12 +136,28 @@ async def register(
 @router.post("/login", response_model=AuthResponse)
 async def login(
     body: LoginRequest,
+    request: Request,
     response: Response,
     db: PlatformSession,
     ctx: AnonymousContext,
     settings: Annotated[Settings, Depends(get_app_settings)],
     jwt_service: Annotated[JwtService, Depends(get_jwt_service)],
 ) -> AuthResponse:
+    ip = client_identity(request)
+    await enforce_rate_limit(
+        request,
+        scope="login:ip",
+        identity=ip,
+        limit=settings.login_ip_rate_limit_per_minute,
+        window_seconds=60,
+    )
+    await enforce_rate_limit(
+        request,
+        scope="login:ip-email",
+        identity=f"{ip}|{body.email}",
+        limit=settings.login_rate_limit_per_minute,
+        window_seconds=60,
+    )
     service = IdentityService(db, settings.refresh_token_ttl_seconds)
     auth = await service.login(ctx, email=body.email, password=body.password)
     return _issue(response, settings, jwt_service, auth)
@@ -140,6 +165,7 @@ async def login(
 
 @router.post("/refresh", response_model=AuthResponse)
 async def refresh(
+    request: Request,
     response: Response,
     db: PlatformSession,
     ctx: AnonymousContext,
@@ -147,6 +173,13 @@ async def refresh(
     jwt_service: Annotated[JwtService, Depends(get_jwt_service)],
     vr_refresh: Annotated[str | None, Cookie()] = None,
 ) -> AuthResponse:
+    await enforce_rate_limit(
+        request,
+        scope="refresh:ip",
+        identity=client_identity(request),
+        limit=settings.token_rate_limit_per_minute,
+        window_seconds=60,
+    )
     if not vr_refresh:
         raise UnauthorizedError("Oturum bulunamadı.", code="NO_REFRESH_TOKEN")
     service = IdentityService(db, settings.refresh_token_ttl_seconds)
@@ -180,11 +213,19 @@ class AcceptInvitationResponse(BaseModel):
 )
 async def accept_invitation(
     body: AcceptInvitationRequest,
+    request: Request,
     db: PlatformSession,
     ctx: AnonymousContext,
     settings: Annotated[Settings, Depends(get_app_settings)],
 ) -> AcceptInvitationResponse:
     """Daveti kabul eder; ardından kullanıcı normal giriş akışıyla oturum açar."""
+    await enforce_rate_limit(
+        request,
+        scope="invitation-accept:ip",
+        identity=client_identity(request),
+        limit=settings.token_rate_limit_per_minute,
+        window_seconds=60,
+    )
     service = IdentityService(db, settings.refresh_token_ttl_seconds)
     _user, membership = await service.accept_invitation(
         ctx, token=body.token, full_name=body.full_name, password=body.password

@@ -45,6 +45,7 @@ class ApiError(Exception):
         code: str | None = None,
         status_code: int | None = None,
         details: list[dict[str, Any]] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> None:
         super().__init__(message or self.message)
         if message is not None:
@@ -54,6 +55,7 @@ class ApiError(Exception):
         if status_code is not None:
             self.status_code = status_code
         self.details = details
+        self.headers = headers
 
 
 class NotFoundError(ApiError):
@@ -132,6 +134,7 @@ def register_error_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=exc.status_code,
             content=_envelope(request, exc.code, exc.message, details=exc.details),
+            headers=exc.headers,
         )
 
     @app.exception_handler(RequestValidationError)
