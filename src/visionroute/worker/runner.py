@@ -31,6 +31,7 @@ from visionroute.infrastructure.db.engine import build_engine, build_session_fac
 from visionroute.infrastructure.db.models.ingestion import IngestEvent
 from visionroute.infrastructure.db.models.system import OutboxEvent
 from visionroute.infrastructure.db.tenancy import set_rls_bypass
+from visionroute.infrastructure.security.crypto import build_field_cipher
 from visionroute.observability.logging import get_logger
 
 logger = get_logger("visionroute.worker")
@@ -44,6 +45,7 @@ class Worker:
         self._settings = settings
         self._engine = build_engine(settings)
         self._factory: async_sessionmaker[AsyncSession] = build_session_factory(self._engine)
+        self._cipher = build_field_cipher(settings)
         self._stopping = False
 
     async def run_forever(self, *, poll_interval: float = 1.0) -> None:
@@ -96,7 +98,7 @@ class Worker:
         )
         async with self._factory() as session:
             await set_rls_bypass(session)
-            delivered, _failed = await NotificationService(session).deliver_pending(
+            delivered, _failed = await NotificationService(session, self._cipher).deliver_pending(
                 url_policy=policy
             )
             await session.commit()

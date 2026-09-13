@@ -11,8 +11,9 @@ from __future__ import annotations
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -58,27 +59,51 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000"]
     cookie_secure: bool = False
     cookie_domain: str | None = None
+    # Base URL of the customer-facing web app; used to build links in e-mails.
+    public_app_url: str = "http://localhost:3000"
+
+    # --- Field encryption (docs/operations/key-rotation.md) ---
+    # JSON object of key id -> Fernet key, e.g. {"k2026a": "<44 chars>"}.
+    # Generate: poetry run visionroute keys generate-field-key
+    field_encryption_keys: dict[str, SecretStr] = Field(default_factory=dict)
+    field_encryption_primary_key_id: str | None = None
 
     # --- Mail ---
+    # smtp: real delivery (Mailpit locally, provider in production)
+    # file: local development, writes .eml files to mail_file_dir
+    # memory: automated tests only
+    mail_backend: Literal["smtp", "file", "memory"] = "file"
+    mail_file_dir: Path = Path(".localdata/mail")
+    mail_from_name: str = "VISiOnRoute"
+    mail_max_attempts: int = Field(default=8, ge=1, le=20)
     smtp_host: str = "localhost"
     smtp_port: int = 1025
     smtp_from: str = "no-reply@visionroute.local"
     smtp_username: str | None = None
-    smtp_password: str | None = None
+    smtp_password: SecretStr | None = None
     smtp_starttls: bool = False
+    smtp_use_ssl: bool = False
+    smtp_timeout_seconds: float = Field(default=15.0, gt=0, le=120)
+
+    # --- Identity policy ---
+    require_verified_email: bool = True
+    invitation_ttl_days: int = Field(default=7, ge=1, le=30)
+    password_reset_ttl_minutes: int = Field(default=30, ge=5, le=240)
+    email_verification_ttl_hours: int = Field(default=48, ge=1, le=168)
+    mfa_issuer: str = "VISiOnRoute"
 
     # --- Object storage (S3 / MinIO) ---
     s3_endpoint_url: str | None = None
     s3_bucket_evidence: str = "visionroute-evidence"
     s3_access_key_id: str | None = None
-    s3_secret_access_key: str | None = None
+    s3_secret_access_key: SecretStr | None = None
     s3_region: str = "eu-central-1"
     signed_url_ttl_seconds: int = Field(default=300, le=3600)
 
     # --- AI assistance (disabled by default; see ADR-0008) ---
     ai_assist_enabled: bool = False
     ai_provider: str | None = None
-    ai_api_key: str | None = None
+    ai_api_key: SecretStr | None = None
     ai_request_timeout_seconds: int = 30
     ai_max_output_tokens: int = 2048
 
@@ -86,9 +111,17 @@ class Settings(BaseSettings):
     bootstrap_admin_email: str | None = None
     bootstrap_admin_password: str | None = None
 
-    # --- Rate limiting ---
-    login_rate_limit_per_minute: int = 10
-    ingest_rate_limit_per_minute: int = 6000
+    # --- Rate limiting (Redis in production; memory only for local/tests) ---
+    rate_limit_backend: Literal["redis", "memory"] = "memory"
+    # Per (client IP, e-mail); account lockout additionally protects each account.
+    login_rate_limit_per_minute: int = Field(default=10, ge=1)
+    # Per client IP; generous so offices behind one NAT address are not blocked.
+    login_ip_rate_limit_per_minute: int = Field(default=100, ge=1)
+    register_rate_limit_per_hour: int = Field(default=20, ge=1)
+    # Refresh, invitation acceptance, token verification (per client IP).
+    token_rate_limit_per_minute: int = Field(default=60, ge=1)
+    account_email_rate_limit_per_hour: int = Field(default=5, ge=1)
+    ingest_rate_limit_per_minute: int = Field(default=6000, ge=1)
 
     # --- Request limits (DoS hardening; CSV import allows 10 MiB + multipart) ---
     max_request_body_bytes: int = Field(default=12 * 1024 * 1024, ge=1024)
@@ -115,6 +148,7 @@ class Settings(BaseSettings):
             )
         if self.jwt_public_key_path is None or not self.jwt_public_key_path.exists():
             problems.append("JWT açık anahtarı bulunamadı (VISIONROUTE_JWT_PUBLIC_KEY_PATH).")
+        problems.extend(self._field_encryption_problems())
         if self.environment.is_production_like:
             if self.debug:
                 problems.append("Üretim benzeri ortamda debug=true olamaz.")
@@ -126,7 +160,42 @@ class Settings(BaseSettings):
                 problems.append(
                     "Bootstrap parolası ortam değişkeninde bırakılmış; kurulumdan sonra silin."
                 )
+            if not self.field_encryption_keys:
+                problems.append(
+                    "Üretim benzeri ortamda alan şifreleme anahtarı "
+                    "(VISIONROUTE_FIELD_ENCRYPTION_KEYS) zorunludur."
+                )
+            if self.mail_backend != "smtp":
+                problems.append("Üretim benzeri ortamda e-posta arka ucu 'smtp' olmalıdır.")
+            if self.mail_backend == "smtp" and self.smtp_host in ("localhost", "127.0.0.1"):
+                problems.append("Üretim benzeri ortamda SMTP sunucusu localhost olamaz.")
+            if self.smtp_username and self.smtp_password is None:
+                problems.append("SMTP kullanıcı adı verilmiş ancak parola eksik.")
+            if self.rate_limit_backend != "redis":
+                problems.append("Üretim benzeri ortamda hız sınırlama arka ucu 'redis' olmalıdır.")
+            if not self.public_app_url.startswith("https://"):
+                problems.append("Üretim benzeri ortamda public_app_url https olmalıdır.")
         return problems
+
+    def _field_encryption_problems(self) -> list[str]:
+        if not self.field_encryption_keys:
+            return []
+        primary = self.resolved_primary_key_id()
+        if primary is None:
+            return [
+                "Birden fazla alan şifreleme anahtarı var; birincil anahtar kimliği "
+                "(VISIONROUTE_FIELD_ENCRYPTION_PRIMARY_KEY_ID) belirtilmelidir."
+            ]
+        if primary not in self.field_encryption_keys:
+            return ["Birincil alan şifreleme anahtar kimliği anahtar listesinde yok."]
+        return []
+
+    def resolved_primary_key_id(self) -> str | None:
+        if self.field_encryption_primary_key_id:
+            return self.field_encryption_primary_key_id
+        if len(self.field_encryption_keys) == 1:
+            return next(iter(self.field_encryption_keys))
+        return None
 
 
 @lru_cache

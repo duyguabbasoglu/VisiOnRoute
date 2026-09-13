@@ -14,6 +14,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
@@ -94,6 +95,9 @@ def test_database_url() -> Iterator[str]:
     yield url
 
 
+TEST_FIELD_KEY = Fernet.generate_key().decode()
+
+
 @pytest.fixture(scope="session")
 def test_settings(test_database_url: str, jwt_keys: tuple[Path, Path]) -> Settings:
     private_path, public_path = jwt_keys
@@ -103,6 +107,16 @@ def test_settings(test_database_url: str, jwt_keys: tuple[Path, Path]) -> Settin
         jwt_private_key_path=private_path,
         jwt_public_key_path=public_path,
         access_token_ttl_seconds=900,
+        field_encryption_keys={"test-k1": TEST_FIELD_KEY},
+        field_encryption_primary_key_id="test-k1",
+        # The whole suite shares one client address; rate limiting has its own
+        # tests with production-like limits (tests/integration/test_rate_limiting.py).
+        login_rate_limit_per_minute=100_000,
+        login_ip_rate_limit_per_minute=100_000,
+        register_rate_limit_per_hour=100_000,
+        token_rate_limit_per_minute=100_000,
+        account_email_rate_limit_per_hour=100_000,
+        ingest_rate_limit_per_minute=1_000_000,
     )
 
 

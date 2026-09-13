@@ -18,12 +18,13 @@ from fastapi import Depends, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from visionroute.api.errors import ForbiddenError, UnauthorizedError
+from visionroute.api.errors import ApiError, ForbiddenError, UnauthorizedError
 from visionroute.application.context import RequestContext
 from visionroute.config.settings import Settings
 from visionroute.domain.permissions import Permission, RoleKey
 from visionroute.infrastructure.db.models.identity import Membership, User
 from visionroute.infrastructure.db.tenancy import set_rls_bypass, set_tenant
+from visionroute.infrastructure.security.crypto import FieldCipher
 from visionroute.infrastructure.security.tokens import AccessTokenClaims, JwtService, TokenError
 
 
@@ -41,6 +42,17 @@ def get_jwt_service(request: Request) -> JwtService:
             status_code=503,
         )
     return service
+
+
+def get_field_cipher(request: Request) -> FieldCipher:
+    cipher: FieldCipher | None = getattr(request.app.state, "field_cipher", None)
+    if cipher is None:
+        raise ApiError(
+            "Alan şifreleme anahtarı yapılandırılmamış; bu işlem şu anda yapılamıyor.",
+            code="ENCRYPTION_NOT_CONFIGURED",
+            status_code=503,
+        )
+    return cipher
 
 
 def _session_factory(request: Request) -> async_sessionmaker[AsyncSession]:

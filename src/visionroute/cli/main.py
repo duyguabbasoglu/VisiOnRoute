@@ -26,6 +26,8 @@ app.add_typer(admin_app, name="admin")
 app.add_typer(simulate_app, name="simulate")
 app.add_typer(worker_app, name="worker")
 app.add_typer(scheduler_app, name="scheduler")
+security_app = typer.Typer(no_args_is_help=True, help="Güvenlik bakım işlemleri.")
+app.add_typer(security_app, name="security")
 
 
 @app.callback()
@@ -64,6 +66,31 @@ def keys_generate(
         )
     )
     typer.echo(f"Anahtarlar üretildi: {private_path}, {public_path}")
+
+
+@keys_app.command("generate-field-key")
+def keys_generate_field_key(
+    key_id: str = typer.Option("k1", help="Anahtar kimliği (rotasyonda yeni bir kimlik verin)."),
+) -> None:
+    """Alan şifreleme anahtarı üretir ve .env satırı olarak yazdırır.
+
+    Üretimde değeri AWS Secrets Manager'a koyun; depoya asla eklemeyin."""
+    from visionroute.infrastructure.security.crypto import generate_field_key
+
+    typer.echo(f'VISIONROUTE_FIELD_ENCRYPTION_KEYS=\'{{"{key_id}": "{generate_field_key()}"}}\'')
+    typer.echo(f"VISIONROUTE_FIELD_ENCRYPTION_PRIMARY_KEY_ID={key_id}")
+
+
+@security_app.command("reencrypt")
+def security_reencrypt() -> None:
+    """Birincil olmayan anahtarla şifrelenmiş tüm alanları birincil anahtarla yeniden şifreler."""
+    import asyncio
+
+    from visionroute.cli.security import reencrypt_all
+
+    counts = asyncio.run(reencrypt_all())
+    for field, count in counts.items():
+        typer.echo(f"{field}: {count} kayıt yeniden şifrelendi")
 
 
 def main() -> None:
