@@ -10,7 +10,7 @@ from fastapi import APIRouter, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from visionroute.api.deps import TenantSession, require_permission
+from visionroute.api.deps import TenantSession, VerifiedEmailContext, require_permission
 from visionroute.api.errors import ForbiddenError
 from visionroute.application.api_clients.service import INGEST_SCOPE, ApiClientService
 from visionroute.application.audit import record_audit
@@ -169,6 +169,7 @@ async def issue_api_token(
     body: ApiTokenCreate,
     db: TenantSession,
     ctx: Annotated[RequestContext, require_permission(Permission.INTEGRATIONS_MANAGE)],
+    _verified: VerifiedEmailContext,
 ) -> ApiTokenOut:
     service = ApiClientService(db)
     token, cleartext = await service.issue_token(

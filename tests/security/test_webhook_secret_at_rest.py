@@ -109,15 +109,25 @@ def test_webhook_management_is_tenant_scoped(client: TestClient, no_dns: None) -
 
 
 def test_webhook_creation_requires_configured_encryption(
-    test_settings: Settings, no_dns: None
+    client: TestClient, test_settings: Settings, no_dns: None
 ) -> None:
     from visionroute.api.main import create_app
 
+    # The organization is registered normally; only the API instance handling
+    # the webhook request lacks field-encryption keys.
+    create_org_and_login(client, "webhook-nokey", "o@webhook-nokey.example")
+    client.cookies.clear()
     unkeyed = test_settings.model_copy(update={"field_encryption_keys": {}})
     with TestClient(create_app(unkeyed), raise_server_exceptions=False) as plain_client:
-        owner = create_org_and_login(plain_client, "webhook-nokey", "o@webhook-nokey.example")
+        login = plain_client.post(
+            "/api/v1/auth/login",
+            json={"email": "o@webhook-nokey.example", "password": "GuvenliParola42!"},
+        )
+        assert login.status_code == 200, login.text
         response = plain_client.post(
-            "/api/v1/webhooks", json={"url": "https://alici.example/hook"}, headers=_h(owner)
+            "/api/v1/webhooks",
+            json={"url": "https://alici.example/hook"},
+            headers=_h(login.json()),
         )
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "ENCRYPTION_NOT_CONFIGURED"

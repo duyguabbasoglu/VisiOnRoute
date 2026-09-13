@@ -10,6 +10,7 @@ Security properties (spec 9.4):
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 
 import typer
 from sqlalchemy import select
@@ -47,6 +48,8 @@ async def _bootstrap(email: str, full_name: str, password: str) -> str:
                 password_hash=hash_password(password),
                 full_name=full_name,
                 platform_role="super_admin",
+                # Provisioned by an operator with shell access; no mailbox proof needed.
+                email_verified_at=datetime.now(UTC),
             )
             db.add(user)
             await db.flush()

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from visionroute.domain.mail import OutgoingEmail
 from visionroute.domain.ratelimit import RateLimitDecision
 
 
@@ -23,3 +24,10 @@ class FieldEncryptor(Protocol):
     def encrypt(self, plaintext: str) -> str: ...
 
     def decrypt(self, value: str) -> str: ...
+
+
+class MailSender(Protocol):
+    async def send(self, email: OutgoingEmail) -> str:
+        """Deliver ``email``; return a provider reference. Raises
+        ``visionroute.domain.mail.MailDeliveryError`` on failure."""
+        ...

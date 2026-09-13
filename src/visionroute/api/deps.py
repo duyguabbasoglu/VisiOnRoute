@@ -12,6 +12,7 @@ from __future__ import annotations
 import ipaddress
 import uuid
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Annotated, Any
 
 from fastapi import Depends, Request
@@ -22,7 +23,7 @@ from visionroute.api.errors import ApiError, ForbiddenError, UnauthorizedError
 from visionroute.application.context import RequestContext
 from visionroute.config.settings import Settings
 from visionroute.domain.permissions import Permission, RoleKey
-from visionroute.infrastructure.db.models.identity import Membership, User
+from visionroute.infrastructure.db.models.identity import Membership, OrganizationSettings, User
 from visionroute.infrastructure.db.tenancy import set_rls_bypass, set_tenant
 from visionroute.infrastructure.security.crypto import FieldCipher
 from visionroute.infrastructure.security.tokens import AccessTokenClaims, JwtService, TokenError
@@ -42,6 +43,11 @@ def get_jwt_service(request: Request) -> JwtService:
             status_code=503,
         )
     return service
+
+
+def get_optional_field_cipher(request: Request) -> FieldCipher | None:
+    cipher: FieldCipher | None = getattr(request.app.state, "field_cipher", None)
+    return cipher
 
 
 def get_field_cipher(request: Request) -> FieldCipher:
@@ -81,11 +87,20 @@ def _client_ip(request: Request) -> str | None:
 
 
 _SESSION_REVOKED_MESSAGE = "Oturumunuz artık geçerli değil. Lütfen yeniden giriş yapın."
+# Account endpoints stay reachable so a user can enroll in MFA when required.
+_MFA_ENROLLMENT_EXEMPT_PREFIX = "/api/v1/auth/"
 
 
-async def _authoritative_access(
-    request: Request, claims: AccessTokenClaims
-) -> tuple[RoleKey | None, bool]:
+@dataclass(frozen=True, slots=True)
+class _AccessState:
+    role: RoleKey | None
+    is_platform_admin: bool
+    email_verified: bool
+    mfa_enabled: bool
+    mfa_required: bool
+
+
+async def _authoritative_access(request: Request, claims: AccessTokenClaims) -> _AccessState:
     """Re-validate the token subject against the database on every request.
 
     Access tokens live up to 15 minutes; trusting their claims alone would let
@@ -97,22 +112,37 @@ async def _authoritative_access(
         user = await session.get(User, claims.user_id)
         if user is None or user.status != "active":
             raise UnauthorizedError(_SESSION_REVOKED_MESSAGE, code="SESSION_REVOKED")
+        # Password or MFA resets revoke every access token issued before them.
+        if user.sessions_revoked_at is not None and claims.issued_at < user.sessions_revoked_at:
+            raise UnauthorizedError(_SESSION_REVOKED_MESSAGE, code="SESSION_REVOKED")
         role: RoleKey | None = None
+        mfa_required = False
         if claims.organization_id is not None:
-            role_key = (
+            row = (
                 await session.execute(
-                    select(Membership.role_key).where(
+                    select(Membership.role_key, OrganizationSettings.security)
+                    .outerjoin(
+                        OrganizationSettings,
+                        OrganizationSettings.organization_id == Membership.organization_id,
+                    )
+                    .where(
                         Membership.user_id == claims.user_id,
                         Membership.organization_id == claims.organization_id,
                         Membership.status == "active",
                     )
                 )
-            ).scalar_one_or_none()
-            if role_key is None:
+            ).one_or_none()
+            if row is None:
                 raise UnauthorizedError(_SESSION_REVOKED_MESSAGE, code="SESSION_REVOKED")
-            role = RoleKey(role_key)
-        is_platform_admin = claims.is_platform_admin and user.platform_role == "super_admin"
-        return role, is_platform_admin
+            role = RoleKey(row[0])
+            mfa_required = bool((row[1] or {}).get("mfa_required", False))
+        return _AccessState(
+            role=role,
+            is_platform_admin=claims.is_platform_admin and user.platform_role == "super_admin",
+            email_verified=user.email_verified_at is not None,
+            mfa_enabled=user.mfa_enabled_at is not None,
+            mfa_required=mfa_required,
+        )
 
 
 async def get_current_context(
@@ -126,16 +156,28 @@ async def get_current_context(
         claims = jwt_service.verify_access_token(auth_header.removeprefix("Bearer "))
     except TokenError as exc:
         raise UnauthorizedError from exc
-    role, is_platform_admin = await _authoritative_access(request, claims)
+    state = await _authoritative_access(request, claims)
+    if (
+        state.mfa_required
+        and not state.mfa_enabled
+        and not request.url.path.startswith(_MFA_ENROLLMENT_EXEMPT_PREFIX)
+    ):
+        raise ForbiddenError(
+            "Organizasyonunuz iki adımlı doğrulamayı zorunlu kılıyor. Devam etmek için "
+            "Hesap Güvenliği sayfasından etkinleştirin.",
+            code="MFA_ENROLLMENT_REQUIRED",
+        )
     return RequestContext(
         user_id=claims.user_id,
         organization_id=claims.organization_id,
-        role=role,
-        is_platform_admin=is_platform_admin,
+        role=state.role,
+        is_platform_admin=state.is_platform_admin,
         actor_label=str(claims.user_id),
         request_id=getattr(request.state, "request_id", None),
         ip_address=_client_ip(request),
         user_agent=request.headers.get("User-Agent"),
+        email_verified=state.email_verified,
+        mfa_enabled=state.mfa_enabled,
     )
 
 
@@ -184,6 +226,22 @@ def require_permission(permission: Permission) -> Any:
         return ctx
 
     return Depends(dependency)
+
+
+def require_verified_email(
+    ctx: CurrentContext, settings: Annotated[Settings, Depends(get_app_settings)]
+) -> RequestContext:
+    """Sensitive actions (inviting users, issuing API keys, creating webhooks,
+    privacy exports) require a verified mailbox when the policy is enabled."""
+    if settings.require_verified_email and not ctx.email_verified and not ctx.is_platform_admin:
+        raise ForbiddenError(
+            "Bu işlem için önce e-posta adresinizi doğrulamanız gerekiyor.",
+            code="EMAIL_NOT_VERIFIED",
+        )
+    return ctx
+
+
+VerifiedEmailContext = Annotated[RequestContext, Depends(require_verified_email)]
 
 
 def require_platform_admin(ctx: CurrentContext) -> RequestContext:

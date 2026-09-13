@@ -33,6 +33,7 @@ class AccessTokenClaims:
     role: str | None
     is_platform_admin: bool
     jti: str
+    issued_at: datetime
 
 
 class JwtService:
@@ -59,7 +60,10 @@ class JwtService:
             "iss": self._issuer,
             "aud": self._audience,
             "sub": str(user_id),
-            "iat": now,
+            # Sub-second precision (RFC 7519 NumericDate may be non-integer) so
+            # a revocation watermark set in the same second still rejects tokens
+            # issued before it.
+            "iat": now.timestamp(),
             "nbf": now,
             "exp": now + self._ttl,
             "jti": secrets.token_urlsafe(16),
@@ -90,6 +94,7 @@ class JwtService:
             role=payload.get("role"),
             is_platform_admin=bool(payload.get("platform_admin", False)),
             jti=payload["jti"],
+            issued_at=datetime.fromtimestamp(float(payload["iat"]), tz=UTC),
         )
 
 
