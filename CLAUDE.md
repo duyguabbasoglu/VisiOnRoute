@@ -58,7 +58,7 @@ poetry run visionroute simulate ...      # telemetry simulator (demo only)
 - JWT: RS256 only, short expiry, `iss/aud/exp/nbf/jti/kid` enforced.
 - Deny-by-default permissions; check in application layer, not UI.
 - Evidence media: private buckets, short-lived signed URLs, access logged.
-- SSRF guard (`visionroute.security.urlguard`) for all user-supplied URLs.
+- SSRF guard (`visionroute.infrastructure.security.urlguard`) for all user-supplied URLs.
 
 ## AI/LLM restrictions
 
