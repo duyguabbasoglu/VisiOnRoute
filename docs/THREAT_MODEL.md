@@ -1,45 +1,68 @@
 # Tehdit Modeli / Threat Model
 
-Kapsam: VISiOnRoute API, web uygulaması, worker, veri alım hattı, nesne depolama,
-AWS altyapısı. Yöntem: STRIDE + veri akışı bazlı. Bu belge yaşayan bir belgedir;
-her yeni yüzey eklendiğinde güncellenir.
+Kapsam: VISiOnRoute API, web uygulaması, worker, scheduler, veri alım hattı, nesne
+depolama, e-posta, canlı akış, AWS altyapısı. Yöntem: STRIDE + veri akışı bazlı.
+Yaşayan bir belgedir; her yeni yüzeyde güncellenir. **Yalnızca kodda veya altyapıda
+gerçekten bulunan kontroller "kontrol" olarak listelenir**; eksikler "kabul edilen
+riskler" bölümündedir.
+
+Son gözden geçirme: 2026-09-14.
 
 ## Varlıklar (koruma öncelik sırasıyla)
 
-1. Video/görüntü kanıtları ve konum geçmişi (kişisel veri, KVKK kapsamı)
-2. Kiracı verileri (olaylar, sürücü profilleri, telemetri)
-3. Kimlik bilgileri: parolalar, refresh token'lar, API anahtarları, imzalama anahtarları
-4. Platform bütünlüğü (kural/model sürümleri, denetim kayıtları)
+1. Kanıt medyası (görüntü/video) ve konum geçmişi — kişisel veri, KVKK kapsamı
+2. Kiracı verileri (olaylar, sürücü profilleri, telemetri, koçluk notları)
+3. Kimlik bilgileri: parolalar, refresh token'lar, API anahtarları, JWT imzalama
+   anahtarı, alan şifreleme anahtarları, TOTP sırları, tek kullanımlık bağlantılar
+4. Platform bütünlüğü (kural sürümleri, denetim kayıtları, abonelik durumu)
 
 ## Tehditler ve kontroller
 
-| Tehdit | Vektör | Kontroller |
-|--------|--------|------------|
-| Çapraz kiracı veri erişimi | IDOR, sorgu hatası | Kiracı-bağlı repository'ler, PostgreSQL RLS, deny-by-default yetkilendirme, çapraz kiracı regresyon testleri |
-| Çalınan oturum/token | XSS, cihaz hırsızlığı | HttpOnly+SameSite çerezler, kısa ömürlü access token, refresh rotasyonu + yeniden kullanım tespiti, oturum iptali |
-| API anahtarı sızıntısı | Depo sızıntısı, log | Anahtarlar hash'lenerek saklanır, scope + kiracı bağlama, son kullanım izleme, iptal, secret scanning |
-| Kanıt medyasının ifşası | Public bucket, uzun ömürlü URL | Private bucket, kısa ömürlü imzalı URL, ayrı ham-medya izni, erişim logu |
-| Sahte telemetri | Zayıf ingest auth | Kaynak başına API anahtarı, zaman damgası mantık kontrolü, koordinat doğrulama, hız sınırlama, karantina |
-| Webhook sahteciliği | İmzasız çağrı | HMAC imza + zaman damgası + nonce; replay penceresi reddi |
-| SSRF | Kullanıcı URL'leri (webhook, RTSP) | URL şema/host doğrulama, özel IP blokları reddi, egress kısıtları |
-| SQL enjeksiyonu | Girdi | Parametrik sorgular (SQLAlchemy), girişte Pydantic doğrulama, güvenlik testleri |
-| XSS | Kullanıcı içeriği, LLM çıktısı | Çıktı kodlama, CSP, LLM çıktısı asla güvenilir HTML olarak render edilmez |
-| CSRF | Çerez tabanlı oturum | SameSite=Lax + CSRF token (durum değiştiren isteklerde) |
-| Mass assignment | Geniş modeller | Ayrı istek/yanıt şemaları; ORM modeline doğrudan bind yok |
-| Yetki yükseltme | Rol kontrolü eksikliği | Merkezî permission kontrolü, UI'da değil API'de zorlanır, testler |
-| Prompt injection | Operatör notları → LLM | LLM'e giden içerik sınırlanır; çıktı şema doğrulamalı; LLM kritik kayıtları değiştiremez |
-| Kötü amaçlı dosya yükleme | CSV/medya import | MIME + magic-byte doğrulama, boyut limiti, zararlı yazılım tarama adaptörü, ayrıştırıcı izolasyonu |
-| Decompression bomb | Sıkıştırılmış yükler | Boyut/oran limitleri, akış tabanlı ayrıştırma |
-| DoS | Yük | Hız sınırlama, istek boyutu limitleri, WAF, autoscaling |
-| Bağımlılık ele geçirme | Tedarik zinciri | Sürüm sabitleme, pip-audit/pnpm audit, SBOM, imzalanmış CI eylemleri (SHA pin) |
-| Bulut IAM aşırı yetki | Yanlış yapılandırma | Görev başına ayrı IAM rolü, en az yetki, Terraform incelemesi |
-| Log sızıntısı | PII/secret loglama | structlog işlemcisiyle redaksiyon, PII-güvenli log politikası |
-| İçeriden kötüye kullanım | Destek erişimi | Impersonation yalnızca gerekçe + süre + görünür banner + değişmez denetim kaydı ile |
-| JWT algoritma karmaşası | `alg` manipülasyonu | Algoritma allowlist (yalnızca RS256), `kid` doğrulaması |
-| Kaba kuvvet | Login | Oran sınırlama, hesap bazlı yavaşlatma, MFA, şüpheli giriş denetimi |
+| Tehdit | Vektör | Kontroller (uygulanmış) |
+|--------|--------|------------------------|
+| Çapraz kiracı veri erişimi | IDOR, eksik filtre | Uygulama katmanında kiracı filtresi + FORCE RLS; `test_rls_coverage` tüm kiracı tablolarını denetler; çapraz kiracı API/E2E testleri (olay, kanıt, KVKK talebi, kullanım) |
+| Çalınan erişim token'ı | XSS, cihaz hırsızlığı | Token yalnızca bellekte; 15 dk ömür; her istekte kullanıcı/üyelik/rol ve oturum iptal damgası DB'den doğrulanır |
+| Çalınan refresh token | Çerez hırsızlığı | HttpOnly + Secure + SameSite=Lax çerez; rotasyon + yeniden kullanımda aile iptali; yalnızca SHA-256 özeti saklanır |
+| CSRF | Çerez tabanlı oturum | Durum değiştiren uçlar `Authorization: Bearer` ister (tarayıcı otomatik eklemez); refresh çerezi SameSite=Lax. Ayrı CSRF token'ı yoktur (gerekmez) |
+| JWT sahteciliği | `alg` manipülasyonu, yabancı anahtar | Yalnızca RS256 allowlist; `iss/aud/exp/nbf/iat/jti/sub` zorunlu; `kid` eşleşmesi zorunlu |
+| Kaba kuvvet / hesap numaralandırma | Giriş, parola sıfırlama | Kayan pencere hız sınırı (IP+e-posta ve IP), hesap kilitleme, TOTP MFA ve org MFA politikası, bilinmeyen hesapta sahte Argon2 doğrulaması, sıfırlama yanıtları hesabın varlığını ele vermez |
+| Tek kullanımlık bağlantı sızıntısı | Proxy/erişim logları, API yanıtı | Davet/sıfırlama/doğrulama token'ları API yanıtında dönmez; e-postada URL fragmanında (`#token=`, sunucuya gitmez); outbox'ta şifreli, gönderimden sonra silinir |
+| API anahtarı sızıntısı/kötüye kullanımı | Depo sızıntısı, log | Yalnızca özet saklanır; kapsam (`ingest:write`, `evidence:write`) ve kiracıya bağlı; bilinmeyen kapsam reddedilir; iptal; hız sınırı; gitleaks CI |
+| Kanıt medyasının ifşası | Açık bucket, uzun ömürlü URL | Özel bucket (public access block, TLS-only politika, KMS); 5 dk imzalı `attachment` URL'leri; ham medya için ayrı izin; her erişim denetime yazılır, URL yazılmaz; yerel geliştirmede HMAC imzalı, işleme ve anahtara bağlı bağlantılar |
+| Kötü amaçlı/yanlış dosya yükleme | Medya yükleme | Tür allowlist'i (JPEG/PNG/MP4), bildirilen boyut imzalı POST koşuluyla zorlanır, `complete` adımında boyut + sihirli bayt kontrolü, uyuşmazlıkta nesne silinir; CSV içe aktarmada boyut sınırı |
+| KVKK taleplerinin kötüye kullanımı | Yetkisiz dışa aktarma/silme | Yönetici talepleri `org.retention.manage`; silmede gerekçe zorunlu, sahip ve kendi hesabı silinemez; self servis yalnızca kendi verisi; dışa aktarma 7 gün, imzalı kısa ömürlü indirme; tüm adımlar denetimde |
+| Sahte telemetri | Zayıf ingest kimlik doğrulaması | İstemci başına kapsamlı API anahtarı, şema/zaman damgası/koordinat doğrulaması, idempotency, karantina, hız sınırı |
+| Webhook sahteciliği | İmzasız çağrı | HMAC-SHA256 imza (`t=<ts>,v1=<hex>`), zaman damgası imzaya dahil; alıcı 5 dk'dan eski damgayı reddetmeli. Sır alan şifrelemesiyle saklanır |
+| SSRF | Webhook URL'leri | Şema/host doğrulaması, özel/yerel IP blokları ve DNS çözümlemesi sonrası kontrol (`urlguard`) |
+| SQL enjeksiyonu | Girdi | Parametrik sorgular (SQLAlchemy), Pydantic doğrulaması, DDL için `format()` ile tırnaklama |
+| CSV formül enjeksiyonu | Rapor dışa aktarma | Kiracı kontrollü metin `'` ile öneklenir |
+| XSS | Kullanıcı içeriği | React çıktı kodlaması, `dangerouslySetInnerHTML` yok; API yanıtlarında `default-src 'none'` CSP; e-posta HTML'i kaçışlı |
+| DoS | Büyük gövde, uzun akışlar | ASGI gövde boyutu sınırı (chunked dahil), hız sınırları, canlı akış boşta DB bağlantısı tutmaz ve en fazla 600 sn sürer, sorgu sınırları |
+| Canlı akışta yetki kalıntısı | Açık SSE bağlantısı | Akış 60 sn'de bir token ve üyelik durumunu yeniden doğrular, iptalde sonlanır; bildirim yükü yalnızca organizasyon kimliği |
+| İstemci IP sahteciliği | `X-Forwarded-For` | Uvicorn yalnızca `FORWARDED_ALLOW_IPS` içindeki kaynaklardan başlığa güvenir; ECS'te görevlere yalnızca ALB güvenlik grubu erişir |
+| Metrik ucunun ifşası | `/metrics` | Token tanımlı değilse 404; Bearer sabit zamanlı karşılaştırma; ALB'ye yönlendirilmez; etiketlerde kiracı/kullanıcı kimliği yok |
+| Hassas alanların at-rest ifşası | DB/yedek sızıntısı | Fernet alan şifrelemesi (webhook sırları, TOTP sırları, e-posta outbox sırları, ehliyet no), sürümlü anahtar halkası ve yeniden şifreleme komutu; RDS/S3 KMS |
+| Log sızıntısı | PII/secret loglama | structlog redaksiyon işlemcisi (hassas anahtar adları), token/URL loglanmaz, erişim logunda sorgu dizesi yok |
+| Yetki yükseltme | Rol kontrolü eksikliği | Merkezî izin kataloğu (DB seed'iyle eşleşmesi testli), API'de zorlanır; UI yalnızca yansıtır |
+| Denetim izinin değiştirilmesi | İçeriden kötüye kullanım | `audit_logs` append-only (DB trigger UPDATE/DELETE reddeder) |
+| Bağımlılık ele geçirme | Tedarik zinciri | Kilit dosyaları, SHA ile sabitlenmiş CI eylemleri, sürümü sabit tarayıcılar (Syft/Grype), pip-audit, doğrulanmış imaj etiketleri |
+| Bulut IAM aşırı yetki | Yanlış yapılandırma | Görev rolleri ayrı (web görev rolü yok), API/worker yalnızca kanıt bucket'ı; dar kapsamlı OIDC dağıtım rolü |
 
-## Kabul edilen riskler (şimdilik)
+## Kabul edilen riskler / bilinen eksikler
 
-- Zararlı yazılım tarama adaptörü arayüz olarak mevcut; gerçek tarayıcı (ör. ClamAV)
-  dağıtımı altyapı aşamasında yapılandırılmalı.
-- DAST taraması CI temel hattında; tam kapsam staging ortamı gerektirir.
+- **Zararlı yazılım taraması yok**: yüklenen medya tür/boyut/sihirli bayt ile
+  doğrulanır ancak antivirüs taramasından geçmez; medya yalnızca indirme olarak sunulur.
+- **Otomatik yüz/plaka anonimleştirme yok**: ham medya `not_processed` olarak
+  işaretlenir ve ayrı izinle sınırlıdır.
+- **WAF ve otomatik ölçekleme tanımlı değil**: DoS koruması uygulama hız sınırları ve
+  ALB ile sınırlı; üretimden önce AWS WAF ve ECS autoscaling değerlendirilmeli.
+- **Webhook replay koruması alıcıya bağlı**: nonce yok; zaman damgası kontrolü alıcı
+  tarafında yapılmalıdır.
+- **Tek JWT imzalama anahtarı**: çoklu doğrulama anahtarıyla kesintisiz rotasyon yok.
+- **Redis aktarım şifrelemesi yok** (tek düğüm ElastiCache); yalnızca VPC içi hız
+  sınırlama sayaçları taşır.
+- **Silinen nesneler 7 gün sürümlü kalır** (kazara silmeye karşı); KVKK silmesi bu süre
+  sonunda tamamlanır.
+- **Destek erişimi/impersonation özelliği yoktur**; eklenirse gerekçe, süre sınırı,
+  görünür uyarı ve denetim kaydı zorunludur.
+- **DAST ve sızma testi yapılmadı**; staging ortamında yapılmalıdır.
