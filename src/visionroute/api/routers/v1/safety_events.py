@@ -6,13 +6,15 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
-from visionroute.api.deps import TenantSession, require_permission
+from visionroute.api.deps import TenantSession, get_optional_field_cipher, require_permission
 from visionroute.api.errors import ForbiddenError, NotFoundError
 from visionroute.application.context import RequestContext
+from visionroute.domain.coaching import RESOLUTION_LABELS_TR, CoachingStatus, Resolution
+from visionroute.domain.coaching import STATUS_LABELS_TR as COACHING_STATUS_LABELS_TR
 from visionroute.domain.permissions import Permission
 from visionroute.domain.safety import (
     EVENT_LABELS_TR,
@@ -20,7 +22,9 @@ from visionroute.domain.safety import (
     SafetyEventType,
     Severity,
 )
+from visionroute.infrastructure.db.models.coaching import CoachingAction
 from visionroute.infrastructure.db.models.safety import EventEvidence, SafetyEvent
+from visionroute.infrastructure.security.crypto import FieldCipher
 
 router = APIRouter(prefix="/safety-events", tags=["safety-events"])
 
@@ -70,12 +74,26 @@ class EvidenceOut(BaseModel):
     captured_at: datetime | None
 
 
+class CoachingLink(BaseModel):
+    id: str
+    status: str
+    status_label: str
+    due_at: datetime | None
+
+
 class SafetyEventDetail(SafetyEventOut):
     explanation: Explanation
     ruleset_version: int
     severity_framework_version: int
     evidence: list[EvidenceOut]
     evidence_restricted: bool = False
+    resolution: str | None = None
+    resolution_label: str | None = None
+    root_cause: str | None = None
+    reviewer_notes: str | None = None
+    reviewed_at: datetime | None = None
+    # Latest coaching action for the event (None without COACHING_READ).
+    coaching_action: CoachingLink | None = None
 
 
 class SafetyEventList(BaseModel):
@@ -205,6 +223,32 @@ async def get_safety_event(
         veri_kalitesi=event.data_quality,
         inceleme_gerekli=event.needs_review,
     )
+    coaching_link: CoachingLink | None = None
+    if ctx.has_permission(Permission.COACHING_READ):
+        latest = (
+            await db.execute(
+                select(CoachingAction)
+                .where(
+                    CoachingAction.organization_id == tenant_id,
+                    CoachingAction.safety_event_id == event_id,
+                )
+                .order_by(CoachingAction.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if latest is not None:
+            coaching_link = CoachingLink(
+                id=str(latest.id),
+                status=latest.status,
+                status_label=COACHING_STATUS_LABELS_TR[CoachingStatus(latest.status)],
+                due_at=latest.due_at,
+            )
+    resolution_label = None
+    if event.resolution:
+        try:
+            resolution_label = RESOLUTION_LABELS_TR[Resolution(event.resolution)]
+        except ValueError:
+            resolution_label = event.resolution
     return SafetyEventDetail(
         **base.model_dump(),
         explanation=explanation,
@@ -212,6 +256,12 @@ async def get_safety_event(
         severity_framework_version=event.severity_framework_version,
         evidence=evidence,
         evidence_restricted=evidence_restricted,
+        resolution=event.resolution,
+        resolution_label=resolution_label,
+        root_cause=event.root_cause,
+        reviewer_notes=event.reviewer_notes,
+        reviewed_at=event.reviewed_at,
+        coaching_action=coaching_link,
     )
 
 
@@ -219,21 +269,33 @@ class ReviewRequest(BaseModel):
     decision: str = Field(pattern="^(confirmed|rejected|uncertain)$")
     notes: str | None = Field(default=None, max_length=4000)
     root_cause: str | None = Field(default=None, max_length=60)
-    resolution: str | None = Field(default=None, max_length=40)
+    resolution: Resolution | None = None
+    # Only used with resolution=kocluk_atandi.
+    coaching_assignee_user_id: uuid.UUID | None = None
+    coaching_due_at: datetime | None = None
 
 
-@router.post("/{event_id}/review", response_model=SafetyEventOut)
+class ReviewResponse(SafetyEventOut):
+    coaching_action_id: str | None = None
+
+
+@router.post("/{event_id}/review", response_model=ReviewResponse)
 async def review_safety_event(
     event_id: uuid.UUID,
     body: ReviewRequest,
     db: TenantSession,
     ctx: Annotated[RequestContext, require_permission(Permission.EVENTS_REVIEW)],
-) -> SafetyEventOut:
-    """Olayı onayla / reddet / belirsiz olarak işaretle; not ve çözüm ekle."""
-    from visionroute.application.safety.review import EventReviewService
+    cipher: Annotated[FieldCipher | None, Depends(get_optional_field_cipher)],
+) -> ReviewResponse:
+    """Olayı onayla / reddet / belirsiz olarak işaretle; not ve çözüm ekle.
+    `kocluk_atandi` çözümü onaylanan olay için koçluk görevi oluşturur (tekrarlanan
+    isteklerde mevcut görev kullanılır)."""
+    from visionroute.application.coaching.service import CoachingService
+    from visionroute.application.mail.service import MailService
+    from visionroute.application.safety.review import CoachingAssignment, EventReviewService
 
-    service = EventReviewService(db)
-    event = await service.review(
+    service = EventReviewService(db, CoachingService(db, MailService(db, cipher)))
+    outcome = await service.review(
         ctx,
         _tenant(ctx),
         event_id,
@@ -241,5 +303,11 @@ async def review_safety_event(
         notes=body.notes,
         root_cause=body.root_cause,
         resolution=body.resolution,
+        coaching=CoachingAssignment(
+            assignee_user_id=body.coaching_assignee_user_id, due_at=body.coaching_due_at
+        ),
     )
-    return _to_out(event)
+    return ReviewResponse(
+        **_to_out(outcome.event).model_dump(),
+        coaching_action_id=str(outcome.coaching_action.id) if outcome.coaching_action else None,
+    )

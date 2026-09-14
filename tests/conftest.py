@@ -90,7 +90,7 @@ def test_database_url() -> Iterator[str]:
         check=True,
         cwd=REPO_ROOT,
         capture_output=True,
-        env={**os.environ, "VISIONROUTE_DATABASE_URL": url},
+        env={**os.environ, "VISIONROUTE_DATABASE_URL": url, "VISIONROUTE_DISABLE_DOTENV": "1"},
     )
     yield url
 

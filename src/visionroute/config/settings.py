@@ -8,6 +8,7 @@ clear message instead of failing later at request time.
 
 from __future__ import annotations
 
+import os
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
@@ -200,4 +201,8 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    # VISIONROUTE_DISABLE_DOTENV=1 ignores a local .env file, so subprocesses
+    # (migrations run by tests, CI) are not influenced by a developer's .env.
+    if os.environ.get("VISIONROUTE_DISABLE_DOTENV") == "1":
+        return Settings(_env_file=None)
     return Settings()

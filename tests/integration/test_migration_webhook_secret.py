@@ -87,6 +87,7 @@ def test_webhook_secret_encryption_migration_roundtrip() -> None:
     env = {
         **os.environ,
         "VISIONROUTE_DATABASE_URL": f"{BASE_URL}/{_DB}",
+        "VISIONROUTE_DISABLE_DOTENV": "1",
         "VISIONROUTE_FIELD_ENCRYPTION_KEYS": json.dumps({"mig": key}),
     }
     _recreate_database()
@@ -118,6 +119,7 @@ def test_webhook_secret_encryption_migration_roundtrip() -> None:
 def test_encryption_migration_refuses_to_run_without_keys() -> None:
     env = {k: v for k, v in os.environ.items() if not k.startswith("VISIONROUTE_FIELD_")}
     env["VISIONROUTE_DATABASE_URL"] = f"{BASE_URL}/{_DB}"
+    env["VISIONROUTE_DISABLE_DOTENV"] = "1"
     _recreate_database()
     try:
         _alembic("upgrade", _BEFORE, env=env)

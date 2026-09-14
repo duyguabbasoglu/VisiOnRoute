@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from visionroute.api.routers.v1.auth import router as auth_router
+from visionroute.api.routers.v1.coaching import router as coaching_router
 from visionroute.api.routers.v1.fleet import router as fleet_router
 from visionroute.api.routers.v1.ingest import router as ingest_router
 from visionroute.api.routers.v1.integrations import router as integrations_router
@@ -25,6 +26,7 @@ router.include_router(integrations_router)
 router.include_router(ingest_router)
 router.include_router(operations_router)
 router.include_router(safety_events_router)
+router.include_router(coaching_router)
 router.include_router(risk_router)
 router.include_router(notifications_reports_router)
 router.include_router(platform_router)

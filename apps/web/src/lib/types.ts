@@ -35,6 +35,12 @@ export interface SafetyEventDetail extends SafetyEvent {
     captured_at: string | null;
   }[];
   evidence_restricted: boolean;
+  resolution: string | null;
+  resolution_label: string | null;
+  root_cause: string | null;
+  reviewer_notes: string | null;
+  reviewed_at: string | null;
+  coaching_action: { id: string; status: string; status_label: string; due_at: string | null } | null;
 }
 
 export interface Vehicle {

@@ -17,7 +17,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-from visionroute.config.settings import Settings
+from visionroute.config.settings import get_settings
 from visionroute.infrastructure.security.crypto import build_field_cipher
 
 revision: str = "4e8b2d3c6a21"
@@ -43,7 +43,7 @@ def upgrade() -> None:
     ).all()
     if not rows:
         return
-    cipher = build_field_cipher(Settings())
+    cipher = build_field_cipher(get_settings())
     if cipher is None:
         raise RuntimeError(_MISSING_KEYS)
     for row_id, secret in rows:
@@ -60,7 +60,7 @@ def downgrade() -> None:
         sa.text("SELECT id, secret_enc FROM webhook_endpoints WHERE secret_enc IS NOT NULL")
     ).all()
     if rows:
-        cipher = build_field_cipher(Settings())
+        cipher = build_field_cipher(get_settings())
         if cipher is None:
             raise RuntimeError(_MISSING_KEYS)
         for row_id, secret_enc in rows:

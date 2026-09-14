@@ -204,6 +204,71 @@ class ReportService:
         pdf.multi_cell(0, 5, _ascii(_LIMITATIONS_TR))
         return bytes(pdf.output())
 
+    async def coaching_csv(self, tenant_id: uuid.UUID, *, window_days: int = 90) -> str:
+        """Coaching actions created in the window, with status and outcome."""
+        from visionroute.domain.coaching import (
+            OUTCOME_LABELS_TR,
+            STATUS_LABELS_TR,
+            CoachingOutcome,
+            CoachingStatus,
+            is_overdue,
+        )
+        from visionroute.infrastructure.db.models.coaching import CoachingAction
+        from visionroute.infrastructure.db.models.fleet import Driver
+
+        organization = await self._db.get(Organization, tenant_id)
+        now = datetime.now(UTC)
+        rows = await self._db.execute(
+            select(CoachingAction, Driver.full_name)
+            .outerjoin(Driver, Driver.id == CoachingAction.driver_id)
+            .where(
+                CoachingAction.organization_id == tenant_id,
+                CoachingAction.created_at >= now - timedelta(days=window_days),
+            )
+            .order_by(CoachingAction.created_at.desc())
+            .limit(_MAX_REPORT_ROWS)
+        )
+        records = rows.all()
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(["# Rapor", "Koçluk Görevleri"])
+        writer.writerow(["# Organizasyon", csv_safe(organization.name if organization else "")])
+        writer.writerow(["# Üretim zamanı (UTC)", now.isoformat()])
+        writer.writerow(["# Kapsam", f"Son {window_days} günde oluşturulan görevler"])
+        writer.writerow(["# Kayıt sayısı", len(records)])
+        writer.writerow([])
+        writer.writerow(
+            [
+                "gorev_id",
+                "baslik",
+                "durum",
+                "gecikme",
+                "surucu",
+                "guvenlik_olayi_id",
+                "termin_utc",
+                "olusturma_utc",
+                "tamamlanma_utc",
+                "sonuc",
+            ]
+        )
+        for action, driver_name in records:
+            status = CoachingStatus(action.status)
+            writer.writerow(
+                [
+                    str(action.id),
+                    csv_safe(action.title),
+                    STATUS_LABELS_TR[status],
+                    "Gecikmiş" if is_overdue(status, action.due_at, now) else "",
+                    csv_safe(driver_name or ""),
+                    str(action.safety_event_id) if action.safety_event_id else "",
+                    action.due_at.isoformat() if action.due_at else "",
+                    action.created_at.isoformat(),
+                    action.completed_at.isoformat() if action.completed_at else "",
+                    OUTCOME_LABELS_TR[CoachingOutcome(action.outcome)] if action.outcome else "",
+                ]
+            )
+        return buffer.getvalue()
+
 
 def _label(event_type: str) -> str:
     try:
