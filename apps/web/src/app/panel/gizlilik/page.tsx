@@ -129,9 +129,12 @@ function NewRequest() {
           create.mutate();
         }}
       >
-        <label className="text-sm text-slate-700">
-          <span className="mb-1 block font-medium">Talep türü</span>
+        <div className="text-sm text-slate-700">
+          <label htmlFor="privacy-kind" className="mb-1 block font-medium">
+            Talep türü
+          </label>
           <select
+            id="privacy-kind"
             value={kind}
             onChange={(e) => setKind(e.target.value === "erasure" ? "erasure" : "export")}
             className="w-full rounded-lg border border-slate-300 px-3 py-2"
@@ -139,10 +142,13 @@ function NewRequest() {
             <option value="export">Veri dışa aktarma (erişim hakkı)</option>
             <option value="erasure">Silme / anonimleştirme</option>
           </select>
-        </label>
-        <label className="text-sm text-slate-700">
-          <span className="mb-1 block font-medium">Kişi türü</span>
+        </div>
+        <div className="text-sm text-slate-700">
+          <label htmlFor="privacy-subject-type" className="mb-1 block font-medium">
+            Kişi türü
+          </label>
           <select
+            id="privacy-subject-type"
             value={subjectType}
             onChange={(e) => setSubjectType(e.target.value === "user" ? "user" : "driver")}
             className="w-full rounded-lg border border-slate-300 px-3 py-2"
@@ -150,10 +156,13 @@ function NewRequest() {
             <option value="driver">Sürücü</option>
             <option value="user">Panel kullanıcısı</option>
           </select>
-        </label>
-        <label className="text-sm text-slate-700 sm:col-span-2">
-          <span className="mb-1 block font-medium">Kişi</span>
+        </div>
+        <div className="text-sm text-slate-700 sm:col-span-2">
+          <label htmlFor="privacy-subject" className="mb-1 block font-medium">
+            Kişi
+          </label>
           <select
+            id="privacy-subject"
             required
             value={subjectId}
             onChange={(e) => setSubjectId(e.target.value)}
@@ -166,12 +175,13 @@ function NewRequest() {
               </option>
             ))}
           </select>
-        </label>
-        <label className="text-sm text-slate-700 sm:col-span-2">
-          <span className="mb-1 block font-medium">
+        </div>
+        <div className="text-sm text-slate-700 sm:col-span-2">
+          <label htmlFor="privacy-reason" className="mb-1 block font-medium">
             Gerekçe {kind === "erasure" ? "(zorunlu, en az 10 karakter)" : "(isteğe bağlı)"}
-          </span>
+          </label>
           <textarea
+            id="privacy-reason"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             maxLength={500}
@@ -180,7 +190,7 @@ function NewRequest() {
             minLength={kind === "erasure" ? 10 : undefined}
             className="w-full rounded-lg border border-slate-300 px-3 py-2"
           />
-        </label>
+        </div>
         <div className="flex items-center gap-3 sm:col-span-2">
           <Button type="submit" variant={kind === "erasure" ? "danger" : "primary"} loading={create.isPending} disabled={!subjectId}>
             {kind === "erasure" ? "Silme talebi oluştur" : "Dışa aktarma talebi oluştur"}
@@ -308,6 +318,7 @@ function ResultSummary({ result }: { result: PrivacyRequest["result"] }) {
 
 function RetentionSettings() {
   const queryClient = useQueryClient();
+  const [feedback, setFeedback] = useState<RetentionFeedback>(null);
   const retention = useQuery({
     queryKey: ["retention"],
     queryFn: () => apiFetch("/api/v1/privacy/retention", { schema: retentionSchema }),
@@ -319,18 +330,33 @@ function RetentionSettings() {
   }
   return (
     <RetentionForm
+      // Remount with fresh values after a save; feedback lives in the parent so
+      // the confirmation survives the remount.
       key={JSON.stringify(retention.data)}
       data={retention.data}
+      feedback={feedback}
+      setFeedback={setFeedback}
       onSaved={() => void queryClient.invalidateQueries({ queryKey: ["retention"] })}
     />
   );
 }
 
-function RetentionForm({ data, onSaved }: { data: Retention; onSaved: () => void }) {
+type RetentionFeedback = { kind: "success" | "error"; text: string } | null;
+
+function RetentionForm({
+  data,
+  feedback,
+  setFeedback,
+  onSaved,
+}: {
+  data: Retention;
+  feedback: RetentionFeedback;
+  setFeedback: (feedback: RetentionFeedback) => void;
+  onSaved: () => void;
+}) {
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(data.categories.map((c) => [c.key, c.override_days?.toString() ?? ""])),
   );
-  const [feedback, setFeedback] = useState<{ kind: "success" | "error"; text: string } | null>(null);
 
   const save = useMutation({
     mutationFn: () =>
@@ -364,9 +390,12 @@ function RetentionForm({ data, onSaved }: { data: Retention; onSaved: () => void
         }}
       >
         {data.categories.map((category) => (
-          <label key={category.key} className="text-sm text-slate-700">
-            <span className="mb-1 block font-medium">{category.label}</span>
+          <div key={category.key} className="text-sm text-slate-700">
+            <label htmlFor={`retention-${category.key}`} className="mb-1 block font-medium">
+              {category.label}
+            </label>
             <input
+              id={`retention-${category.key}`}
               type="number"
               min={data.min_days}
               max={data.plan_days}
@@ -376,10 +405,10 @@ function RetentionForm({ data, onSaved }: { data: Retention; onSaved: () => void
               className="w-full rounded-lg border border-slate-300 px-3 py-2"
             />
             <span className="mt-1 block text-xs text-slate-500">Geçerli süre: {category.effective_days} gün</span>
-          </label>
+          </div>
         ))}
         <div className="flex items-center gap-3 sm:col-span-2">
-          <Button type="submit" loading={save.isPending}>
+          <Button type="submit" loading={save.isPending} onClick={() => setFeedback(null)}>
             Kaydet
           </Button>
           {feedback && <Alert kind={feedback.kind}>{feedback.text}</Alert>}

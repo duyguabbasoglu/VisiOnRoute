@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiFetch, ApiError } from "@/lib/api";
-import { Card, EmptyState, PageHeader, formatDateTime } from "@/components/ui";
+import { Alert, Button, Card, EmptyState, PageHeader, TextField, formatDateTime } from "@/components/ui";
 
 interface DataSource {
   id: string;
@@ -88,36 +88,24 @@ export default function IntegrationsPage() {
           }}
           className="flex flex-wrap items-end gap-3"
         >
-          <div>
-            <label className="block text-xs text-slate-500">Ad</label>
-            <input
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="mt-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-slate-500">
-              Kaynak anahtarı (küçük harf, tire)
-            </label>
-            <input
-              required
-              value={sourceKey}
-              onChange={(e) => setSourceKey(e.target.value)}
-              placeholder="telematik-1"
-              className="mt-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={createSource.isPending}
-            className="rounded-lg bg-brand-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
-          >
+          <TextField label="Ad" required value={name} onChange={(e) => setName(e.target.value)} />
+          <TextField
+            label="Kaynak anahtarı"
+            required
+            value={sourceKey}
+            onChange={(e) => setSourceKey(e.target.value)}
+            placeholder="telematik-1"
+            hint="Küçük harf, rakam ve tire."
+          />
+          <Button type="submit" loading={createSource.isPending}>
             Oluştur
-          </button>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          </Button>
         </form>
+        {error && (
+          <Alert kind="error" className="mt-3">
+            {error}
+          </Alert>
+        )}
       </Card>
 
       <Card className="mb-4">
@@ -148,18 +136,21 @@ export default function IntegrationsPage() {
             </fieldset>
             {keyError && <p className="mt-1 text-sm text-red-600">{keyError}</p>}
           </div>
-          <button
+          <Button
+            variant="secondary"
             onClick={() => createKey.mutate()}
-            disabled={createKey.isPending || scopes.length === 0}
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-60"
+            loading={createKey.isPending}
+            disabled={scopes.length === 0}
           >
             Anahtar üret
-          </button>
+          </Button>
         </div>
         {issuedKey && (
           <div className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
             <p className="font-medium">Anahtar yalnızca bir kez gösterilir:</p>
-            <code className="mt-1 block break-all font-mono text-xs">{issuedKey}</code>
+            <code aria-label="Yeni API anahtarı" className="mt-1 block break-all font-mono text-xs">
+              {issuedKey}
+            </code>
           </div>
         )}
       </Card>

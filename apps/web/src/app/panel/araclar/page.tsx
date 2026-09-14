@@ -2,11 +2,32 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { apiFetch, ApiError } from "@/lib/api";
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  PageHeader,
+  TextField,
+  formatDateTime,
+} from "@/components/ui";
+import { apiFetch, errorMessage } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import type { Paginated, Vehicle } from "@/lib/types";
-import { Card, EmptyState, PageHeader, formatDateTime } from "@/components/ui";
+
+const VEHICLE_STATUS: Record<string, { label: string; tone: "success" | "neutral" | "warning" }> = {
+  active: { label: "Etkin", tone: "success" },
+  inactive: { label: "Pasif", tone: "neutral" },
+  maintenance: { label: "Bakımda", tone: "warning" },
+};
 
 export default function VehiclesPage() {
+  const { user } = useAuth();
+  const canManage = can(user, "fleet.manage");
   const queryClient = useQueryClient();
   const [externalId, setExternalId] = useState("");
   const [plate, setPlate] = useState("");
@@ -29,52 +50,47 @@ export default function VehiclesPage() {
       setError(null);
       void queryClient.invalidateQueries({ queryKey: ["vehicles"] });
     },
-    onError: (err) =>
-      setError(err instanceof ApiError ? err.message : "Araç eklenemedi."),
+    onError: (err) => setError(errorMessage(err, "Araç eklenemedi.")),
   });
 
   return (
     <div>
       <PageHeader title="Araçlar" description="Filonuzdaki araçları yönetin." />
-      <Card className="mb-4">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            create.mutate();
-          }}
-          className="flex flex-wrap items-end gap-3"
-        >
-          <div>
-            <label className="block text-xs text-slate-500">Dış kimlik (external_id)</label>
-            <input
+      {canManage && (
+        <Card className="mb-4">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              create.mutate();
+            }}
+            className="flex flex-wrap items-end gap-3"
+          >
+            <TextField
+              label="Dış kimlik"
               required
               value={externalId}
               onChange={(e) => setExternalId(e.target.value)}
               placeholder="34ABC123"
-              className="mt-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+              hint="Telemetri verisindeki araç kimliği."
             />
-          </div>
-          <div>
-            <label className="block text-xs text-slate-500">Plaka</label>
-            <input
-              value={plate}
-              onChange={(e) => setPlate(e.target.value)}
-              placeholder="34 ABC 123"
-              className="mt-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={create.isPending}
-            className="rounded-lg bg-brand-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
-          >
-            Araç ekle
-          </button>
-          {error && <p className="text-sm text-red-600">{error}</p>}
-        </form>
-      </Card>
+            <TextField label="Plaka" value={plate} onChange={(e) => setPlate(e.target.value)} placeholder="34 ABC 123" />
+            <Button type="submit" loading={create.isPending}>
+              Araç ekle
+            </Button>
+          </form>
+          {error && (
+            <Alert kind="error" className="mt-3">
+              {error}
+            </Alert>
+          )}
+        </Card>
+      )}
 
-      {query.data && query.data.items.length > 0 ? (
+      {query.isLoading ? (
+        <LoadingState />
+      ) : query.isError ? (
+        <ErrorState message={errorMessage(query.error, "Araçlar yüklenemedi.")} />
+      ) : query.data && query.data.items.length > 0 ? (
         <Card className="overflow-x-auto p-0">
           <table className="w-full text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs text-slate-500">
@@ -86,19 +102,30 @@ export default function VehiclesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {query.data.items.map((v) => (
-                <tr key={v.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-2.5 text-ink-900">{v.external_id}</td>
-                  <td className="px-4 py-2.5 text-slate-600">{v.plate ?? "—"}</td>
-                  <td className="px-4 py-2.5 text-slate-600">{v.status}</td>
-                  <td className="px-4 py-2.5 text-slate-500">{formatDateTime(v.created_at)}</td>
-                </tr>
-              ))}
+              {query.data.items.map((v) => {
+                const status = VEHICLE_STATUS[v.status] ?? { label: v.status, tone: "neutral" as const };
+                return (
+                  <tr key={v.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-2.5 text-ink-900">{v.external_id}</td>
+                    <td className="px-4 py-2.5 text-slate-600">{v.plate ?? "—"}</td>
+                    <td className="px-4 py-2.5">
+                      <Badge tone={status.tone}>{status.label}</Badge>
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-500">{formatDateTime(v.created_at)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </Card>
       ) : (
-        <EmptyState message="Henüz araç eklenmemiş. Yukarıdaki formu kullanarak ilk aracınızı ekleyin." />
+        <EmptyState
+          message={
+            canManage
+              ? "Henüz araç eklenmemiş. Yukarıdaki formu kullanarak ilk aracınızı ekleyin."
+              : "Henüz araç eklenmemiş."
+          }
+        />
       )}
     </div>
   );
