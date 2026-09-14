@@ -204,3 +204,25 @@ Her kilometre taşı kapanışında güncellenir. Tarihler UTC.
   frontend typecheck/lint/build ✓.
 - `docs/HANDOVER.md` eksikler tablosu + NEXT AGENT PROMPT INPUT ile güncellendi.
 - `docs/RELEASE_READINESS.md` kanıt bazlı değerlendirme: **READY FOR STAGING**.
+
+## 2026-09-14 — Kontrollü pilot tamamlama çalışması
+
+Başlangıç (M12 sonrası denetim): 114 test, 8 migration, import-linter kırık,
+2 bilinen CVE (cryptography, pytest), birçok spesifikasyon özelliği eksik.
+
+- Temel hatalar: katman ihlalleri, DB-yetkili rol kontrolü, worker savepoint'leri,
+  scheduler kilidi, tekilleştirme yarışı, CSV enjeksiyonu, gövde boyutu sınırı.
+- Güvenlik: alan şifreleme, hız sınırlama (sonra kayan pencere), şifreli webhook
+  sırları, JWT `kid`, refresh yeniden deneme penceresi, KVKK hız sınırları,
+  kanıta dayalı tehdit modeli, eksik ADR'ler.
+- Kimlik: işlemsel e-posta outbox'ı, parola sıfırlama, e-posta doğrulama, TOTP MFA;
+  web tarafında tüm kimlik ekranları ve tek uçuşlu oturum yenileme.
+- Ürün: koçluk, kanıt medyası (S3/MinIO), KVKK dışa aktarma/silme + saklama,
+  SSE canlı akış, Türkçe PDF, Prometheus metrikleri, kullanım ölçümü, deneme bitişi,
+  raporlar/bildirimler/webhook/API anahtarı/atama/platform ekranları.
+- Altyapı: dağıtılabilir imajlar (API imajı hiç derlenmiyordu), compose tam yığın,
+  Terraform worker/scheduler/web servisleri ve sırlar, sıralı CD, engelleyici denetimler,
+  Playwright CI işi; web bağımlılıklarındaki kritik açıklar giderildi.
+- Kalite kapısı: 247 backend testi, 12 Vitest, 16 Playwright akışı, 17 migration;
+  Docker derleme + compose duman testi, Terraform validate.
+- Yapılmayanlar ve kullanıcı eylemleri: docs/HANDOVER.md.
