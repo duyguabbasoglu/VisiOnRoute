@@ -93,7 +93,16 @@ class Settings(BaseSettings):
     email_verification_ttl_hours: int = Field(default=48, ge=1, le=168)
     mfa_issuer: str = "VISiOnRoute"
 
-    # --- Object storage (S3 / MinIO) ---
+    # --- Object storage (S3 / MinIO in production-like; local files for dev/tests) ---
+    storage_backend: Literal["s3", "local"] = "local"
+    local_storage_dir: Path = Path(".localdata/objects")
+    # HMAC key for local signed URLs; random per process when unset (local only).
+    local_storage_signing_key: SecretStr | None = None
+    # Base URL browsers use to reach this API (local signed URLs).
+    public_api_url: str = "http://localhost:8000"
+    s3_public_endpoint_url: str | None = None
+    evidence_max_bytes: int = Field(default=50 * 1024 * 1024, ge=1024)
+    evidence_upload_ttl_seconds: int = Field(default=900, ge=60, le=3600)
     s3_endpoint_url: str | None = None
     s3_bucket_evidence: str = "visionroute-evidence"
     s3_access_key_id: str | None = None
@@ -172,6 +181,8 @@ class Settings(BaseSettings):
                 problems.append("Üretim benzeri ortamda SMTP sunucusu localhost olamaz.")
             if self.smtp_username and self.smtp_password is None:
                 problems.append("SMTP kullanıcı adı verilmiş ancak parola eksik.")
+            if self.storage_backend != "s3":
+                problems.append("Üretim benzeri ortamda nesne depolama arka ucu 's3' olmalıdır.")
             if self.rate_limit_backend != "redis":
                 problems.append("Üretim benzeri ortamda hız sınırlama arka ucu 'redis' olmalıdır.")
             if not self.public_app_url.startswith("https://"):

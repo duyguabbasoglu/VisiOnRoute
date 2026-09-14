@@ -17,6 +17,11 @@ interface DataSource {
   duplicate_count: number;
 }
 
+const API_SCOPES = [
+  { value: "ingest:write", label: "Telemetri gönderimi" },
+  { value: "evidence:write", label: "Kanıt medyası yükleme (kamera)" },
+];
+
 export default function IntegrationsPage() {
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
@@ -28,6 +33,9 @@ export default function IntegrationsPage() {
     queryKey: ["data-sources"],
     queryFn: () => apiFetch<DataSource[]>("/api/v1/integrations/data-sources"),
   });
+
+  const [scopes, setScopes] = useState<string[]>(["ingest:write"]);
+  const [keyError, setKeyError] = useState<string | null>(null);
 
   const createSource = useMutation({
     mutationFn: () =>
@@ -53,10 +61,15 @@ export default function IntegrationsPage() {
       });
       return apiFetch<{ api_key: string }>(
         `/api/v1/integrations/clients/${client.id}/tokens`,
-        { method: "POST", body: { scopes: ["ingest:write"] } },
+        { method: "POST", body: { scopes } },
       );
     },
-    onSuccess: (data) => setIssuedKey(data.api_key),
+    onSuccess: (data) => {
+      setKeyError(null);
+      setIssuedKey(data.api_key);
+    },
+    onError: (err) =>
+      setKeyError(err instanceof ApiError ? err.message : "API anahtarı üretilemedi."),
   });
 
   return (
@@ -112,12 +125,32 @@ export default function IntegrationsPage() {
           <div>
             <h2 className="text-sm font-semibold text-ink-900">API anahtarı</h2>
             <p className="text-xs text-slate-500">
-              Cihazlarınızın veri göndermesi için `ingest:write` kapsamlı anahtar.
+              Anahtara yalnızca gereken yetkileri verin. Anahtar yalnızca bir kez gösterilir.
             </p>
+            <fieldset className="mt-2 flex flex-wrap gap-4 text-sm text-slate-700">
+              <legend className="sr-only">Anahtar kapsamları</legend>
+              {API_SCOPES.map((scope) => (
+                <label key={scope.value} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={scopes.includes(scope.value)}
+                    onChange={(e) =>
+                      setScopes((current) =>
+                        e.target.checked
+                          ? [...current, scope.value]
+                          : current.filter((item) => item !== scope.value),
+                      )
+                    }
+                  />
+                  {scope.label}
+                </label>
+              ))}
+            </fieldset>
+            {keyError && <p className="mt-1 text-sm text-red-600">{keyError}</p>}
           </div>
           <button
             onClick={() => createKey.mutate()}
-            disabled={createKey.isPending}
+            disabled={createKey.isPending || scopes.length === 0}
             className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-60"
           >
             Anahtar üret

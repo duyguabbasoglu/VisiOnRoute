@@ -17,7 +17,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from visionroute.api.errors import ForbiddenError, UnauthorizedError
 from visionroute.api.ratelimit import enforce_rate_limit
-from visionroute.application.api_clients.service import INGEST_SCOPE, ApiClientService
+from visionroute.application.api_clients.service import (
+    EVIDENCE_SCOPE,
+    INGEST_SCOPE,
+    ApiClientService,
+)
 from visionroute.application.context import RequestContext
 from visionroute.config.settings import Settings
 from visionroute.infrastructure.db.tenancy import set_rls_bypass, set_tenant
@@ -44,8 +48,6 @@ async def _authenticate(request: Request) -> IngestPrincipal:
 
     if verified is None:
         raise UnauthorizedError("API anahtarı geçersiz veya süresi dolmuş.", code="API_KEY_INVALID")
-    if INGEST_SCOPE not in verified.scopes:
-        raise ForbiddenError("Bu anahtar veri alımı için yetkili değil.", code="SCOPE_MISSING")
     settings: Settings = request.app.state.settings
     await enforce_rate_limit(
         request,
@@ -61,11 +63,29 @@ async def _authenticate(request: Request) -> IngestPrincipal:
     )
 
 
-IngestAuth = Annotated[IngestPrincipal, Depends(_authenticate)]
+ApiKeyAuth = Annotated[IngestPrincipal, Depends(_authenticate)]
+
+
+def _require_ingest_scope(principal: ApiKeyAuth) -> IngestPrincipal:
+    if INGEST_SCOPE not in principal.scopes:
+        raise ForbiddenError("Bu anahtar veri alımı için yetkili değil.", code="SCOPE_MISSING")
+    return principal
+
+
+def _require_evidence_scope(principal: ApiKeyAuth) -> IngestPrincipal:
+    if EVIDENCE_SCOPE not in principal.scopes:
+        raise ForbiddenError(
+            "Bu anahtar kanıt yükleme için yetkili değil (evidence:write).", code="SCOPE_MISSING"
+        )
+    return principal
+
+
+IngestAuth = Annotated[IngestPrincipal, Depends(_require_ingest_scope)]
+EvidenceAuth = Annotated[IngestPrincipal, Depends(_require_evidence_scope)]
 
 
 async def get_ingest_session(
-    request: Request, principal: IngestAuth
+    request: Request, principal: ApiKeyAuth
 ) -> AsyncIterator[AsyncSession]:
     factory = request.app.state.db_session_factory
     async with factory() as session:

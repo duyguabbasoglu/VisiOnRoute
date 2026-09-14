@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from visionroute.application.audit import record_audit
 from visionroute.application.context import RequestContext
-from visionroute.application.errors import DomainNotFoundError
+from visionroute.application.errors import DomainNotFoundError, ValidationFailedError
 from visionroute.infrastructure.db.models.identity import ApiClient, ApiToken
 from visionroute.infrastructure.security.tokens import (
     generate_opaque_secret,
@@ -24,6 +24,8 @@ from visionroute.infrastructure.security.tokens import (
 )
 
 INGEST_SCOPE = "ingest:write"
+EVIDENCE_SCOPE = "evidence:write"
+ALLOWED_SCOPES = frozenset({INGEST_SCOPE, EVIDENCE_SCOPE})
 
 
 @dataclass(frozen=True)
@@ -74,12 +76,23 @@ class ApiClientService:
         client = await self._db.get(ApiClient, client_id)
         if client is None or client.organization_id != tenant_id:
             raise DomainNotFoundError("API istemcisi bulunamadı.")
+        unknown = sorted(set(scopes) - ALLOWED_SCOPES)
+        if not scopes or unknown:
+            raise ValidationFailedError(
+                [
+                    "Geçersiz kapsam: "
+                    + (", ".join(unknown) if unknown else "en az bir kapsam seçin")
+                    + f". İzin verilenler: {', '.join(sorted(ALLOWED_SCOPES))}."
+                ]
+            )
+        if expires_at is not None and expires_at <= datetime.now(UTC):
+            raise ValidationFailedError(["Son kullanma tarihi gelecekte olmalıdır."])
         cleartext, digest = generate_opaque_secret("vrk")
         token = ApiToken(
             api_client_id=client.id,
             token_hash=digest,
             prefix=cleartext[:12],
-            scopes=scopes,
+            scopes=sorted(set(scopes)),
             expires_at=expires_at,
         )
         self._db.add(token)

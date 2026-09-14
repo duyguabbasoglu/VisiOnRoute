@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -110,6 +111,10 @@ def test_settings(test_database_url: str, jwt_keys: tuple[Path, Path]) -> Settin
         field_encryption_keys={"test-k1": TEST_FIELD_KEY},
         field_encryption_primary_key_id="test-k1",
         mail_backend="memory",
+        storage_backend="local",
+        local_storage_dir=Path(tempfile.mkdtemp(prefix="vr-objects-")),
+        local_storage_signing_key="test-local-storage-signing-key",
+        public_api_url="http://testserver",
         public_app_url="https://app.visionroute.test",
         # Most suites exercise features, not the verification policy; the
         # policy itself is tested with it enabled in test_account_security.py.

@@ -48,12 +48,16 @@ class BodySizeLimitMiddleware:
     from ``receive`` would be swallowed by the framework's body parser).
     """
 
-    def __init__(self, app: ASGIApp, max_bytes: int) -> None:
+    def __init__(
+        self, app: ASGIApp, max_bytes: int, exempt_paths: frozenset[str] = frozenset()
+    ) -> None:
         self.app = app
         self.max_bytes = max_bytes
+        # Endpoints that enforce their own, signed per-request limit.
+        self.exempt_paths = exempt_paths
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http":
+        if scope["type"] != "http" or scope.get("path") in self.exempt_paths:
             await self.app(scope, receive, send)
             return
 
@@ -154,4 +158,8 @@ def register_middleware(app: FastAPI, settings: Settings) -> None:
         return response
 
     # Added last so it runs outermost: oversized bodies never reach routing.
-    app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_body_bytes)
+    app.add_middleware(
+        BodySizeLimitMiddleware,
+        max_bytes=settings.max_request_body_bytes,
+        exempt_paths=frozenset({"/api/v1/storage/local/objects"}),
+    )
