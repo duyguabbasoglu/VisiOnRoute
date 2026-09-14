@@ -72,6 +72,12 @@ class EvidenceOut(BaseModel):
     kind: str
     telemetry_window: dict[str, object] | None
     captured_at: datetime | None
+    # Media evidence (snapshot/clip); the file itself needs a signed URL from
+    # /evidence/{id}/access and events.evidence.raw_media.
+    status: str
+    content_type: str | None = None
+    size_bytes: int | None = None
+    redaction_status: str
 
 
 class CoachingLink(BaseModel):
@@ -202,8 +208,14 @@ async def get_safety_event(
                 kind=ev.kind,
                 telemetry_window=ev.telemetry_window,
                 captured_at=ev.captured_at,
+                status=ev.status,
+                content_type=ev.content_type,
+                size_bytes=ev.size_bytes,
+                redaction_status=ev.redaction_status,
             )
             for ev in evidence_rows.scalars()
+            # Abandoned upload slots are noise, not evidence.
+            if ev.status != "pending_upload"
         ]
 
     base = _to_out(event)

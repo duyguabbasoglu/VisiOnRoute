@@ -36,6 +36,8 @@ export default function EventDetailPage() {
   const queryClient = useQueryClient();
   const canReview = can(user, "events.review");
   const canManageCoaching = can(user, "coaching.manage");
+  const canViewMedia = can(user, "events.evidence.raw_media");
+  const canManageMedia = canViewMedia && canReview;
 
   const [decision, setDecision] = useState("confirmed");
   const [resolution, setResolution] = useState("");
@@ -261,10 +263,13 @@ export default function EventDetailPage() {
           <ul className="space-y-2">
             {event.evidence.map((ev) => (
               <li key={ev.id} className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
-                <span className="font-medium text-slate-700">
-                  {ev.kind === "telemetry_window" ? "Telemetri penceresi" : ev.kind}
-                </span>
-                {ev.captured_at && <Badge>{formatDateTime(ev.captured_at)}</Badge>}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium text-slate-700">{EVIDENCE_KIND_LABELS[ev.kind] ?? "Kanıt"}</span>
+                  {ev.captured_at && <Badge>{formatDateTime(ev.captured_at)}</Badge>}
+                  {ev.kind !== "telemetry_window" && (
+                    <MediaEvidence eventId={event.id} evidence={ev} canView={canViewMedia} canManage={canManageMedia} />
+                  )}
+                </div>
                 {ev.telemetry_window && <TelemetryWindow data={ev.telemetry_window} />}
               </li>
             ))}
@@ -272,8 +277,188 @@ export default function EventDetailPage() {
         ) : (
           <p className="text-sm text-slate-400">Bağlı kanıt yok.</p>
         )}
+        {!event.evidence_restricted && canManageMedia && <EvidenceUpload eventId={event.id} />}
       </Card>
     </div>
+  );
+}
+
+const EVIDENCE_KIND_LABELS: Record<string, string> = {
+  telemetry_window: "Telemetri penceresi",
+  snapshot: "Görüntü",
+  clip: "Video klip",
+  note: "Not",
+};
+
+const MEDIA_STATUS: Record<string, { label: string; tone: "neutral" | "success" | "warning" | "danger" }> = {
+  available: { label: "Erişilebilir", tone: "success" },
+  rejected: { label: "Reddedildi (içerik türü uyuşmadı)", tone: "danger" },
+  deleted: { label: "Silindi", tone: "neutral" },
+  pending_upload: { label: "Yükleniyor", tone: "warning" },
+};
+
+const ALLOWED_MEDIA = ["image/jpeg", "image/png", "video/mp4"];
+
+const accessSchema = z.object({ url: z.string().url(), expires_in: z.number() });
+const uploadSlotSchema = z.object({
+  evidence_id: z.string(),
+  upload: z.object({
+    url: z.string().url(),
+    method: z.enum(["POST", "PUT"]),
+    fields: z.record(z.string()),
+    headers: z.record(z.string()),
+    expires_at: z.string(),
+    max_bytes: z.number(),
+  }),
+});
+
+function formatBytes(size: number | null): string {
+  if (size === null) return "";
+  if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+type EvidenceItem = SafetyEventDetail["evidence"][number];
+
+function MediaEvidence({
+  eventId,
+  evidence,
+  canView,
+  canManage,
+}: {
+  eventId: string;
+  evidence: EvidenceItem;
+  canView: boolean;
+  canManage: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const [error, setError] = useState<string | null>(null);
+  const status = MEDIA_STATUS[evidence.status] ?? { label: evidence.status, tone: "neutral" as const };
+  const base = `/api/v1/safety-events/${eventId}/evidence/${evidence.id}`;
+
+  const open = useMutation({
+    mutationFn: () => apiFetch(`${base}/access`, { schema: accessSchema }),
+    // The short-lived link is used immediately and never stored.
+    onSuccess: ({ url }) => {
+      setError(null);
+      window.open(url, "_blank", "noopener,noreferrer");
+    },
+    onError: (err) => setError(errorMessage(err, "Kanıt bağlantısı alınamadı.")),
+  });
+  const remove = useMutation({
+    mutationFn: () => apiFetch(base, { method: "DELETE" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["safety-event", eventId] }),
+    onError: (err) => setError(errorMessage(err, "Kanıt silinemedi.")),
+  });
+
+  return (
+    <>
+      <Badge tone={status.tone}>{status.label}</Badge>
+      {evidence.size_bytes !== null && <span>{formatBytes(evidence.size_bytes)}</span>}
+      {evidence.redaction_status === "not_processed" && (
+        <Badge tone="warning">Anonimleştirilmedi (yüz/plaka görünebilir)</Badge>
+      )}
+      {evidence.status === "available" && canView && (
+        <Button variant="secondary" className="px-2 py-1 text-xs" loading={open.isPending} onClick={() => open.mutate()}>
+          Güvenli bağlantıyla aç
+        </Button>
+      )}
+      {evidence.status === "available" && canManage && (
+        <Button
+          variant="danger"
+          className="px-2 py-1 text-xs"
+          loading={remove.isPending}
+          onClick={() => {
+            if (window.confirm("Bu kanıt dosyası kalıcı olarak silinsin mi? Bu işlem denetim kaydına yazılır.")) {
+              remove.mutate();
+            }
+          }}
+        >
+          Sil
+        </Button>
+      )}
+      {!canView && evidence.status === "available" && (
+        <span className="text-slate-500">Ham medyayı açmak için ek yetki gerekir.</span>
+      )}
+      {error && <span role="alert" className="text-red-700">{error}</span>}
+    </>
+  );
+}
+
+async function sendToStorage(slot: z.infer<typeof uploadSlotSchema>["upload"], file: File): Promise<void> {
+  let response: Response;
+  if (slot.method === "POST") {
+    const form = new FormData();
+    for (const [key, value] of Object.entries(slot.fields)) form.append(key, value);
+    form.append("file", file);
+    response = await fetch(slot.url, { method: "POST", body: form, credentials: "omit" });
+  } else {
+    response = await fetch(slot.url, { method: "PUT", body: file, headers: slot.headers, credentials: "omit" });
+  }
+  if (!response.ok) throw new Error("upload_failed");
+}
+
+function EvidenceUpload({ eventId }: { eventId: string }) {
+  const queryClient = useQueryClient();
+  const [file, setFile] = useState<File | null>(null);
+  const [feedback, setFeedback] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+
+  const upload = useMutation({
+    mutationFn: async (selected: File) => {
+      const slot = await apiFetch(`/api/v1/safety-events/${eventId}/evidence/uploads`, {
+        method: "POST",
+        body: { content_type: selected.type, size_bytes: selected.size, filename: selected.name },
+        schema: uploadSlotSchema,
+      });
+      try {
+        await sendToStorage(slot.upload, selected);
+      } catch {
+        throw new ApiError(0, "UPLOAD_FAILED", "Dosya depolamaya yüklenemedi. Bağlantınızı kontrol edip tekrar deneyin.");
+      }
+      await apiFetch(`/api/v1/safety-events/${eventId}/evidence/${slot.evidence_id}/complete`, { method: "POST" });
+    },
+    onSuccess: () => {
+      setFile(null);
+      setFeedback({ kind: "success", text: "Kanıt dosyası doğrulandı ve olaya eklendi." });
+      void queryClient.invalidateQueries({ queryKey: ["safety-event", eventId] });
+    },
+    onError: (err) => setFeedback({ kind: "error", text: errorMessage(err, "Kanıt yüklenemedi.") }),
+  });
+
+  return (
+    <form
+      className="mt-4 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!file) return;
+        if (!ALLOWED_MEDIA.includes(file.type)) {
+          setFeedback({ kind: "error", text: "Yalnızca JPEG, PNG görüntü veya MP4 video yüklenebilir." });
+          return;
+        }
+        upload.mutate(file);
+      }}
+    >
+      <label className="text-sm text-slate-700">
+        <span className="mb-1 block font-medium">Görüntü veya video kanıtı ekle</span>
+        <input
+          type="file"
+          accept={ALLOWED_MEDIA.join(",")}
+          onChange={(e) => {
+            setFeedback(null);
+            setFile(e.target.files?.[0] ?? null);
+          }}
+          className="text-sm"
+        />
+      </label>
+      <Button type="submit" disabled={!file} loading={upload.isPending}>
+        Yükle
+      </Button>
+      <p className="w-full text-xs text-slate-500">
+        Dosya içeriği sunucuda doğrulanır. Otomatik yüz/plaka anonimleştirme bu sürümde yoktur; kişisel veri
+        içeren kayıtları yalnızca gerekli olduğunda ekleyin.
+      </p>
+      {feedback && <Alert kind={feedback.kind}>{feedback.text}</Alert>}
+    </form>
   );
 }
 

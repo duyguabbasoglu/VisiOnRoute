@@ -33,6 +33,10 @@ export interface SafetyEventDetail extends SafetyEvent {
     kind: string;
     telemetry_window: Record<string, unknown> | null;
     captured_at: string | null;
+    status: "pending_upload" | "available" | "rejected" | "deleted";
+    content_type: string | null;
+    size_bytes: number | null;
+    redaction_status: "not_applicable" | "not_processed" | "pending" | "completed" | "failed";
   }[];
   evidence_restricted: boolean;
   resolution: string | null;

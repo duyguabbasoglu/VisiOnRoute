@@ -49,6 +49,28 @@ jobs:
         env:
           VISIONROUTE_DATABASE_URL: postgresql+asyncpg://visionroute:visionroute@localhost:5433/visionroute
         run: poetry run pytest tests/integration tests/security -q
+      - name: Start MinIO (S3 contract)
+        # Pinned release binary verified against MinIO's published SHA-256.
+        env:
+          MINIO_RELEASE: RELEASE.2025-10-15T17-29-55Z
+          MINIO_ROOT_USER: visionroute
+          MINIO_ROOT_PASSWORD: visionroute-dev-only
+        run: |
+          base="https://dl.min.io/server/minio/release/linux-amd64/archive"
+          curl -fsSLo minio "$base/minio.$MINIO_RELEASE"
+          curl -fsSL "$base/minio.$MINIO_RELEASE.sha256sum" | awk '{print $1"  minio"}' | sha256sum -c -
+          chmod +x minio
+          mkdir -p "$RUNNER_TEMP/minio-data"
+          nohup ./minio server "$RUNNER_TEMP/minio-data" --address 127.0.0.1:9000 > "$RUNNER_TEMP/minio.log" 2>&1 &
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:9000/minio/health/live && exit 0
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/minio.log"; exit 1
+      - name: Contract tests (ingestion envelope, S3 storage against MinIO)
+        env:
+          VISIONROUTE_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+        run: poetry run pytest tests/contract -q
       - name: Bandit (SAST)
         run: poetry run bandit -c pyproject.toml -r src -q
       - name: Dependency audit

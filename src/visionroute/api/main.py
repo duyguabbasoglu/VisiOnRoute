@@ -18,6 +18,7 @@ from visionroute.infrastructure.db.engine import build_engine, build_session_fac
 from visionroute.infrastructure.ratelimit import build_rate_limiter
 from visionroute.infrastructure.security.crypto import FieldEncryptionError, build_field_cipher
 from visionroute.infrastructure.security.tokens import JwtService, TokenError
+from visionroute.infrastructure.storage import build_object_storage
 from visionroute.observability.logging import configure_logging, get_logger
 
 logger = get_logger(__name__)
@@ -45,6 +46,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.db_session_factory = build_session_factory(app.state.db_engine)
         app.state.settings = settings
         app.state.rate_limiter = build_rate_limiter(settings)
+        # Object storage clients are lazy: no network I/O until first use.
+        app.state.object_storage = build_object_storage(settings)
         try:
             app.state.field_cipher = build_field_cipher(settings)
         except FieldEncryptionError:

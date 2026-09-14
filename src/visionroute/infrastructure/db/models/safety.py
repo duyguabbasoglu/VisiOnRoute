@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     DateTime,
     Float,
@@ -106,8 +107,31 @@ class EventEvidence(IdMixin, TimestampMixin, Base):
     storage_key: Mapped[str | None] = mapped_column(String(400))
     content_type: Mapped[str | None] = mapped_column(String(100))
     captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Media lifecycle: pending_upload → available | rejected; deleted by
+    # retention or privacy deletion (object removed, row kept for audit).
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="available", server_default="available"
+    )
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    original_filename: Mapped[str | None] = mapped_column(String(200))
+    uploaded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    uploaded_by_api_client_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    # Automatic face/plate anonymization needs an external computer-vision
+    # service that is not integrated; media stays "not_processed" and raw
+    # access requires events.evidence.raw_media (docs/HANDOVER.md).
+    redaction_status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="not_applicable", server_default="not_applicable"
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         Index("ix_event_evidence_safety_event_id", "safety_event_id"),
         CheckConstraint("kind IN ('telemetry_window','snapshot','clip','note')", name="kind_valid"),
+        CheckConstraint(
+            "status IN ('pending_upload','available','rejected','deleted')", name="status_valid"
+        ),
+        CheckConstraint(
+            "redaction_status IN ('not_applicable','not_processed','pending','completed','failed')",
+            name="redaction_status_valid",
+        ),
     )
