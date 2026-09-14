@@ -16,6 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from visionroute.application.errors import DomainConflictError
+from visionroute.domain.usage import GROWTH_BLOCKED_STATUSES, effective_status, trial_days_left
 from visionroute.infrastructure.db.models.fleet import Vehicle
 from visionroute.infrastructure.db.models.identity import Membership
 from visionroute.infrastructure.db.models.saas import Plan, Subscription
@@ -61,6 +62,9 @@ class Entitlements:
     user_limit: int
     retention_days: int
     trial_ends_at: datetime | None
+    billing_mode: str = "manual_invoice"
+    trial_days_left: int | None = None
+    growth_blocked: bool = False
 
 
 class SubscriptionService:
@@ -78,6 +82,7 @@ class SubscriptionService:
         return subscription
 
     async def get_entitlements(self, organization_id: uuid.UUID) -> Entitlements:
+        now = datetime.now(UTC)
         row = await self._db.execute(
             select(Subscription, Plan)
             .join(Plan, Plan.key == Subscription.plan_key)
@@ -100,18 +105,32 @@ class SubscriptionService:
                 trial_ends_at=None,
             )
         subscription, plan = pair
+        status = effective_status(subscription.status, subscription.trial_ends_at, now)
         return Entitlements(
             plan_key=plan.key,
             plan_name_tr=plan.name_tr,
-            status=subscription.status,
+            status=status,
             vehicle_limit=plan.vehicle_limit,
             user_limit=plan.user_limit,
             retention_days=plan.retention_days,
             trial_ends_at=subscription.trial_ends_at,
+            billing_mode=subscription.billing_mode,
+            trial_days_left=trial_days_left(status, subscription.trial_ends_at, now),
+            growth_blocked=status in GROWTH_BLOCKED_STATUSES,
         )
+
+    @staticmethod
+    def _ensure_growth_allowed(entitlements: Entitlements) -> None:
+        if entitlements.growth_blocked:
+            raise DomainConflictError(
+                "Aboneliğiniz etkin değil (deneme süresi sona erdi veya ödeme bekleniyor). "
+                "Yeni araç veya kullanıcı eklemek için platform yöneticisiyle iletişime geçin; "
+                "mevcut veriler ve veri alımı çalışmaya devam eder."
+            )
 
     async def enforce_vehicle_limit(self, organization_id: uuid.UUID) -> None:
         entitlements = await self.get_entitlements(organization_id)
+        self._ensure_growth_allowed(entitlements)
         if entitlements.vehicle_limit < 0:
             return
         count = await self._db.execute(
@@ -125,6 +144,7 @@ class SubscriptionService:
 
     async def enforce_user_limit(self, organization_id: uuid.UUID) -> None:
         entitlements = await self.get_entitlements(organization_id)
+        self._ensure_growth_allowed(entitlements)
         if entitlements.user_limit < 0:
             return
         count = await self._db.execute(

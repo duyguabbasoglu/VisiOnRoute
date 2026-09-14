@@ -13,6 +13,7 @@ from visionroute import __version__
 from visionroute.api.errors import register_error_handlers
 from visionroute.api.middleware import register_middleware
 from visionroute.api.routers.health import router as health_router
+from visionroute.api.routers.metrics import router as metrics_router
 from visionroute.config.settings import Settings, get_settings
 from visionroute.infrastructure.db.engine import build_engine, build_session_factory
 from visionroute.infrastructure.ratelimit import build_rate_limiter
@@ -96,6 +97,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_error_handlers(app)
 
     app.include_router(health_router)
+    app.include_router(metrics_router)
     _include_v1_routers(app)
     return app
 

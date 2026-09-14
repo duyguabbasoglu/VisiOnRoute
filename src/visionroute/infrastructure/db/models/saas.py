@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     ForeignKey,
     Index,
     Integer,
     String,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -70,7 +72,12 @@ class UsageRecord(IdMixin, Base):
     recorded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    # UTC day the value describes; snapshots upsert on (organization, metric, day).
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
 
     __table_args__ = (
         Index("ix_usage_records_org_metric", "organization_id", "metric", "recorded_at"),
+        UniqueConstraint(
+            "organization_id", "metric", "period_start", name="uq_usage_records_org_metric_period"
+        ),
     )

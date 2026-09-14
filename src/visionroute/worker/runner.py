@@ -38,6 +38,7 @@ from visionroute.infrastructure.realtime import notify_live
 from visionroute.infrastructure.security.crypto import build_field_cipher
 from visionroute.infrastructure.storage import build_object_storage
 from visionroute.observability.logging import get_logger
+from visionroute.observability.metrics import WORKER_ITEMS
 
 logger = get_logger("visionroute.worker")
 
@@ -72,11 +73,16 @@ class Worker:
 
     async def run_once(self) -> int:
         """Claim and process up to one batch. Returns how many were handled."""
-        handled = await self._process_outbox_batch()
-        handled += await self._deliver_webhooks()
-        handled += (await self._mail_delivery.deliver_due()).handled
-        handled += await self._privacy.process_due()
-        return handled
+        counts = {
+            "outbox": await self._process_outbox_batch(),
+            "webhooks": await self._deliver_webhooks(),
+            "mail": (await self._mail_delivery.deliver_due()).handled,
+            "privacy": await self._privacy.process_due(),
+        }
+        for source, count in counts.items():
+            if count:
+                WORKER_ITEMS.labels(source).inc(count)
+        return sum(counts.values())
 
     async def _process_outbox_batch(self) -> int:
         handled = 0

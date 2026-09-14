@@ -114,6 +114,10 @@ class Settings(BaseSettings):
     # Directory with DejaVuSans.ttf / DejaVuSans-Bold.ttf for Turkish PDF text.
     pdf_font_dir: Path | None = None
 
+    # --- Observability ---
+    # Bearer token for GET /metrics; the endpoint answers 404 while unset.
+    metrics_token: SecretStr | None = None
+
     # --- AI assistance (disabled by default; see ADR-0008) ---
     ai_assist_enabled: bool = False
     ai_provider: str | None = None
@@ -190,6 +194,8 @@ class Settings(BaseSettings):
                     "PDF raporları için Unicode yazı tipi (DejaVu Sans) bulunamadı; "
                     "VISIONROUTE_PDF_FONT_DIR ayarlanmalı."
                 )
+            if self.metrics_token is not None and len(self.metrics_token.get_secret_value()) < 32:
+                problems.append("Metrik erişim anahtarı en az 32 karakter olmalıdır.")
             if self.storage_backend != "s3":
                 problems.append("Üretim benzeri ortamda nesne depolama arka ucu 's3' olmalıdır.")
             if self.rate_limit_backend != "redis":
