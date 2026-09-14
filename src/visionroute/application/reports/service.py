@@ -11,12 +11,14 @@ import io
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from visionroute.config.fonts import BOLD_FONT, REGULAR_FONT, find_unicode_font_dir
 from visionroute.domain.safety import (
     EVENT_LABELS_TR,
     SEVERITY_LABELS_TR,
@@ -28,13 +30,13 @@ from visionroute.infrastructure.db.models.safety import SafetyEvent
 from visionroute.infrastructure.db.models.telemetry import Trip
 
 _METHODOLOGY_TR = (
-    "Olaylar deterministik kurallarla uretilir; siddet ve guven ayri hesaplanir. "
-    "Bu rapor kazalarin onlenecegini garanti etmez; riskleri veriye dayali "
-    "gorunur kilar."
+    "Olaylar deterministik kurallarla üretilir; şiddet ve güven ayrı hesaplanır. "
+    "Bu rapor kazaların önleneceğini garanti etmez; riskleri veriye dayalı "
+    "görünür kılar."
 )
 _LIMITATIONS_TR = (
-    "Veri kapsami cihaz baglantisina ve veri kalitesine baglidir. Dusuk kaliteli "
-    "veriden uretilen olaylar insan incelemesi gerektirir."
+    "Veri kapsamı cihaz bağlantısına ve veri kalitesine bağlıdır. Düşük kaliteli "
+    "veriden üretilen olaylar insan incelemesi gerektirir."
 )
 
 
@@ -63,8 +65,9 @@ class ReportMeta:
 
 
 class ReportService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, *, pdf_font_dir: Path | None = None) -> None:
         self._db = session
+        self._pdf_font_dir = pdf_font_dir
 
     async def _load(
         self, tenant_id: uuid.UUID, window_days: int
@@ -152,56 +155,48 @@ class ReportService:
         confirmed = sum(1 for e in events if e.review_status == "confirmed")
 
         pdf = FPDF()
+        pdf.set_title("VISiOnRoute Yönetici Güvenlik Raporu")
+        pdf.set_creator("VISiOnRoute")
+        font_dir = find_unicode_font_dir(self._pdf_font_dir)
+        if font_dir is not None:
+            pdf.add_font("DejaVu", "", str(font_dir / REGULAR_FONT))
+            pdf.add_font("DejaVu", "B", str(font_dir / BOLD_FONT))
+            family = "DejaVu"
+            text = _identity
+        else:
+            # Development without the font package only: production-like
+            # startup refuses to run without it (Settings.validate_for_runtime).
+            family = "Helvetica"
+            text = _ascii
         pdf.add_page()
-        pdf.set_font("Helvetica", "B", 16)
-        pdf.cell(
-            0,
-            10,
-            _ascii("VISiOnRoute — Yonetici Guvenlik Raporu"),
-            new_x=XPos.LMARGIN,
-            new_y=YPos.NEXT,
-        )
-        pdf.set_font("Helvetica", "", 10)
-        pdf.cell(
-            0,
-            6,
-            _ascii(f"Organizasyon: {meta.organization_name}"),
-            new_x=XPos.LMARGIN,
-            new_y=YPos.NEXT,
-        )
-        pdf.cell(
-            0,
-            6,
-            f"Uretim zamani (UTC): {meta.generated_at.strftime('%Y-%m-%d %H:%M')}",
-            new_x=XPos.LMARGIN,
-            new_y=YPos.NEXT,
-        )
-        pdf.cell(
-            0, 6, f"Toplam mesafe: {meta.total_distance_km} km", new_x=XPos.LMARGIN, new_y=YPos.NEXT
-        )
-        pdf.cell(0, 6, f"Olay sayisi: {meta.event_count}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+        def line(value: str, *, size: int = 10, bold: bool = False, height: int = 6) -> None:
+            pdf.set_font(family, "B" if bold else "", size)
+            pdf.cell(0, height, text(value), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+        def paragraph(value: str) -> None:
+            pdf.set_font(family, "", 9)
+            pdf.multi_cell(0, 5, text(value), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+        line("VISiOnRoute — Yönetici Güvenlik Raporu", size=16, bold=True, height=10)
+        line(f"Organizasyon: {meta.organization_name}")
+        line(f"Üretim zamanı (UTC): {meta.generated_at.strftime('%Y-%m-%d %H:%M')}")
+        line(f"Dönem: son {window_days} gün")
+        line(f"Toplam mesafe: {meta.total_distance_km} km")
+        line(f"Olay sayısı: {meta.event_count}")
         pdf.ln(4)
 
-        pdf.set_font("Helvetica", "B", 12)
-        pdf.cell(0, 8, "Siddet dagilimi", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        pdf.set_font("Helvetica", "", 10)
+        line("Şiddet dağılımı", size=12, bold=True, height=8)
         for severity in Severity:
-            label = _ascii(SEVERITY_LABELS_TR[severity])
-            pdf.cell(
-                0, 6, f"{label}: {by_severity[severity.value]}", new_x=XPos.LMARGIN, new_y=YPos.NEXT
-            )
+            line(f"{SEVERITY_LABELS_TR[severity]}: {by_severity[severity.value]}")
         rate = round(confirmed / meta.event_count * 100) if meta.event_count else 0
-        pdf.cell(0, 6, f"Onay orani: %{rate}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        line(f"İnceleme sonucu onaylanan olay oranı: %{rate}")
         pdf.ln(4)
 
-        pdf.set_font("Helvetica", "B", 12)
-        pdf.cell(0, 8, "Metodoloji", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        pdf.set_font("Helvetica", "", 9)
-        pdf.multi_cell(0, 5, _ascii(_METHODOLOGY_TR))
-        pdf.set_font("Helvetica", "B", 12)
-        pdf.cell(0, 8, "Sinirlamalar", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        pdf.set_font("Helvetica", "", 9)
-        pdf.multi_cell(0, 5, _ascii(_LIMITATIONS_TR))
+        line("Metodoloji", size=12, bold=True, height=8)
+        paragraph(_METHODOLOGY_TR)
+        line("Sınırlamalar", size=12, bold=True, height=8)
+        paragraph(_LIMITATIONS_TR)
         return bytes(pdf.output())
 
     async def coaching_csv(self, tenant_id: uuid.UUID, *, window_days: int = 90) -> str:
@@ -277,9 +272,11 @@ def _label(event_type: str) -> str:
         return event_type
 
 
+def _identity(text: str) -> str:
+    return text
+
+
 def _ascii(text: str) -> str:
-    """Fold Turkish characters for the PDF core font (no embedded TTF yet;
-    full Turkish glyph support requires shipping a Unicode font — tracked in
-    HANDOVER.md)."""
+    """Fold Turkish characters for the Latin-1 core font (fallback only)."""
     table = str.maketrans("çÇğĞıİöÖşŞüÜ—", "cCgGiIoOsSuU-")
     return text.translate(table)

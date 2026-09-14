@@ -181,6 +181,24 @@ async def get_current_context(
     )
 
 
+async def revalidate_access(request: Request) -> bool:
+    """Re-check the bearer token and account state for a long-lived stream.
+
+    Returns False once the token expired or the user/membership was revoked,
+    so streaming endpoints can terminate instead of serving stale privileges.
+    """
+    jwt_service: JwtService | None = getattr(request.app.state, "jwt_service", None)
+    auth_header = request.headers.get("Authorization", "")
+    if jwt_service is None or not auth_header.startswith("Bearer "):
+        return False
+    try:
+        claims = jwt_service.verify_access_token(auth_header.removeprefix("Bearer "))
+        await _authoritative_access(request, claims)
+    except (TokenError, UnauthorizedError):
+        return False
+    return True
+
+
 def get_anonymous_context(request: Request) -> RequestContext:
     return RequestContext(
         user_id=None,
