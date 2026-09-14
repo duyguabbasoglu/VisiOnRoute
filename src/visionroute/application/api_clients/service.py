@@ -125,6 +125,18 @@ class ApiClientService:
             resource_id=str(token.id),
         )
 
+    async def list_tokens(self, tenant_id: uuid.UUID, client_id: uuid.UUID) -> list[ApiToken]:
+        """Token metadata for one client (never the digest or cleartext)."""
+        client = await self._db.get(ApiClient, client_id)
+        if client is None or client.organization_id != tenant_id:
+            raise DomainNotFoundError("API istemcisi bulunamadı.")
+        rows = await self._db.execute(
+            select(ApiToken)
+            .where(ApiToken.api_client_id == client_id)
+            .order_by(ApiToken.created_at.desc())
+        )
+        return list(rows.scalars())
+
     async def verify_token(self, cleartext: str) -> VerifiedToken | None:
         """Resolve an API key to its tenant/scopes, or None if invalid.
 

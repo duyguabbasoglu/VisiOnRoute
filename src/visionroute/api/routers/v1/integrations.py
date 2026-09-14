@@ -72,6 +72,16 @@ class ApiTokenOut(BaseModel):
     api_key: str | None = None
 
 
+class ApiTokenSummary(BaseModel):
+    id: str
+    prefix: str
+    scopes: list[str]
+    expires_at: datetime | None
+    revoked_at: datetime | None
+    last_used_at: datetime | None
+    created_at: datetime
+
+
 class ApiClientOut(BaseModel):
     id: str
     name: str
@@ -182,6 +192,28 @@ async def issue_api_token(
         expires_at=token.expires_at,
         api_key=cleartext,
     )
+
+
+@router.get("/clients/{client_id}/tokens", response_model=list[ApiTokenSummary])
+async def list_api_tokens(
+    client_id: uuid.UUID,
+    db: TenantSession,
+    ctx: Annotated[RequestContext, require_permission(Permission.INTEGRATIONS_READ)],
+) -> list[ApiTokenSummary]:
+    """İstemcinin anahtarları: yalnızca önek ve durum (anahtarın kendisi tekrar gösterilmez)."""
+    tokens = await ApiClientService(db).list_tokens(_tenant(ctx), client_id)
+    return [
+        ApiTokenSummary(
+            id=str(t.id),
+            prefix=t.prefix,
+            scopes=list(t.scopes),
+            expires_at=t.expires_at,
+            revoked_at=t.revoked_at,
+            last_used_at=t.last_used_at,
+            created_at=t.created_at,
+        )
+        for t in tokens
+    ]
 
 
 @router.delete("/tokens/{token_id}", status_code=status.HTTP_204_NO_CONTENT)
