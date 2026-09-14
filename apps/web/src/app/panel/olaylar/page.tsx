@@ -3,11 +3,13 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
-import { apiFetch } from "@/lib/api";
-import type { SafetyEventList } from "@/lib/types";
+import { apiFetch, errorMessage } from "@/lib/api";
+import { safetyEventListSchema } from "@/lib/schemas";
 import {
   Card,
   EmptyState,
+  ErrorState,
+  LoadingState,
   PageHeader,
   ReviewBadge,
   SeverityBadge,
@@ -40,7 +42,7 @@ export default function EventsPage() {
       const params = new URLSearchParams({ limit: "50" });
       if (severity) params.set("severity", severity);
       if (review) params.set("review_status", review);
-      return apiFetch<SafetyEventList>(`/api/v1/safety-events?${params.toString()}`);
+      return apiFetch(`/api/v1/safety-events?${params.toString()}`, { schema: safetyEventListSchema });
     },
   });
 
@@ -80,7 +82,9 @@ export default function EventsPage() {
       </Card>
 
       {query.isLoading ? (
-        <p className="text-sm text-slate-500">Yükleniyor…</p>
+        <LoadingState />
+      ) : query.isError ? (
+        <ErrorState message={errorMessage(query.error, "Olaylar yüklenemedi.")} onRetry={() => void query.refetch()} />
       ) : query.data && query.data.items.length > 0 ? (
         <Card className="overflow-x-auto p-0">
           <table className="w-full text-sm">

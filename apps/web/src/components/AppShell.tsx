@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth";
 import { can, type Permission } from "@/lib/permissions";
 import { messageSchema } from "@/lib/schemas";
 
-const NAV: { href: string; label: string; permission: Permission | null }[] = [
+const NAV: { href: string; label: string; permission: Permission | null; platformOnly?: boolean }[] = [
   { href: "/panel", label: "Genel Bakış", permission: null },
   { href: "/panel/canli", label: "Canlı Operasyon", permission: "trips.read" },
   { href: "/panel/olaylar", label: "Güvenlik Olayları", permission: "events.read" },
@@ -18,10 +18,13 @@ const NAV: { href: string; label: string; permission: Permission | null }[] = [
   { href: "/panel/araclar", label: "Araçlar", permission: "fleet.read" },
   { href: "/panel/seferler", label: "Seferler", permission: "trips.read" },
   { href: "/panel/analizler", label: "Analizler", permission: "analytics.read" },
+  { href: "/panel/raporlar", label: "Raporlar", permission: "reports.read" },
+  { href: "/panel/bildirimler", label: "Bildirimler", permission: "events.read" },
   { href: "/panel/entegrasyonlar", label: "Entegrasyonlar", permission: "integrations.read" },
   { href: "/panel/ayarlar", label: "Organizasyon", permission: "org.read" },
   { href: "/panel/gizlilik", label: "Gizlilik (KVKK)", permission: "org.retention.manage" },
   { href: "/panel/abonelik", label: "Abonelik", permission: "subscription.read" },
+  { href: "/panel/platform", label: "Platform Yönetimi", permission: null, platformOnly: true },
   { href: "/panel/hesap", label: "Hesabım", permission: null },
 ];
 
@@ -57,7 +60,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
   if (!user) return null;
 
-  const items = NAV.filter((item) => item.permission === null || can(user, item.permission)).filter(
+  const items = NAV.filter((item) =>
+    item.platformOnly ? user.is_platform_admin : item.permission === null || can(user, item.permission),
+  ).filter(
     (item) => !mfaEnrollmentRequired || item.href === ACCOUNT_PATH,
   );
 

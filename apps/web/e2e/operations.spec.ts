@@ -2,7 +2,6 @@ import { expect, test, type Page } from "@playwright/test";
 import { API_URL } from "./support/env";
 import {
   apiAccessToken,
-  bearer,
   ingestHarshBraking,
   newAccount,
   register,
@@ -54,21 +53,10 @@ test.describe.serial("filo güvenliği operasyonu", () => {
 
   test("telemetri güvenlik olayı üretir; olay koçluk atamasıyla incelenir", async ({ request }) => {
     const token = await apiAccessToken(request, account.email, account.password);
-    // Driver-vehicle assignment has no screen yet; the public API is used.
-    const vehicles = (await (await request.get(`${API_URL}/api/v1/vehicles`, bearer(token))).json()) as {
-      items: { id: string }[];
-    };
-    const drivers = (await (await request.get(`${API_URL}/api/v1/drivers`, bearer(token))).json()) as {
-      items: { id: string }[];
-    };
-    const [driver] = drivers.items;
-    const [vehicle] = vehicles.items;
-    if (!driver || !vehicle) throw new Error("Araç veya sürücü oluşturulmamış");
-    const assigned = await request.post(`${API_URL}/api/v1/assignments`, {
-      ...bearer(token),
-      data: { driver_id: driver.id, vehicle_id: vehicle.id },
-    });
-    expect(assigned.ok(), await assigned.text()).toBeTruthy();
+    await page.goto("/panel/surucular");
+    await page.getByLabel("Kemal Sürücü için araç").selectOption({ label: vehicleId });
+    await page.getByRole("button", { name: "Ata", exact: true }).click();
+    await expect(page.getByText("Sürücü araca atandı.")).toBeVisible();
 
     await ingestHarshBraking(request, apiKey, sourceKey, vehicleId);
     eventId = await waitForFirstEvent(request, token);
@@ -115,6 +103,19 @@ test.describe.serial("filo güvenliği operasyonu", () => {
     await expect(page.getByRole("button", { name: "İndir" })).toBeVisible({ timeout: 45_000 });
   });
 
+  test("raporlar indirilir ve bildirim kuralı oluşturulur", async () => {
+    await page.goto("/panel/raporlar");
+    const download = page.waitForEvent("download");
+    await page.getByRole("button", { name: "İndir" }).first().click();
+    expect((await download).suggestedFilename()).toMatch(/\.csv$/);
+
+    await page.goto("/panel/bildirimler");
+    await page.getByLabel("Kural adı").fill("Yüksek şiddet uyarısı");
+    await page.getByRole("button", { name: "Kural ekle" }).click();
+    await expect(page.getByText("Kural oluşturuldu.")).toBeVisible();
+    await expect(page.getByText("Yüksek şiddet uyarısı")).toBeVisible();
+  });
+
   test("saklama süresi kaydedilir ve abonelik kullanımı görüntülenir", async () => {
     await page.goto("/panel/gizlilik");
     await page.getByLabel("Ham telemetri (konum/hız noktaları)").fill("60");
@@ -125,5 +126,17 @@ test.describe.serial("filo güvenliği operasyonu", () => {
     await expect(page.getByRole("heading", { name: "Abonelik" })).toBeVisible();
     await expect(page.getByText(/Deneme sürenizin bitmesine \d+ gün kaldı/)).toBeVisible();
     await expect(page.getByRole("progressbar", { name: "Araç kullanımı" })).toHaveAttribute("aria-valuenow", "1");
+  });
+
+  test("API anahtarı panelden iptal edilir ve artık kabul edilmez", async ({ request }) => {
+    await page.goto("/panel/entegrasyonlar");
+    await page.getByRole("button", { name: "İptal et" }).first().click();
+    await page.getByRole("button", { name: "Emin misiniz? Onayla" }).click();
+    await expect(page.getByText("İptal edildi")).toBeVisible();
+    const rejected = await request.post(`${API_URL}/api/v1/ingest/events`, {
+      headers: { "X-API-Key": apiKey },
+      data: { source_key: sourceKey, events: [] },
+    });
+    expect(rejected.status()).toBe(401);
   });
 });
