@@ -209,6 +209,17 @@ resource "aws_secretsmanager_secret" "jwt_keys" {
   tags        = local.tags
 }
 
+# Uygulama sırları tek JSON secret'ında (değerleri dağıtım hattı/operatör
+# yazar, Terraform state'ine girmez). Anahtarlar:
+#   field_encryption_keys  {"k1": "<Fernet anahtarı>"} biçiminde JSON metni
+#   smtp_password          SMTP parolası (yoksa "")
+#   metrics_token          /metrics Bearer anahtarı, en az 32 karakter (yoksa "")
+resource "aws_secretsmanager_secret" "app" {
+  name_prefix = "${local.name}-app-secrets-"
+  kms_key_id  = aws_kms_key.main.arn
+  tags        = local.tags
+}
+
 # ---------------------------------------------------------------- database
 
 resource "aws_db_subnet_group" "main" {
@@ -235,6 +246,8 @@ resource "aws_db_instance" "main" {
   backup_retention_period    = 14
   deletion_protection        = var.db_deletion_protection
   skip_final_snapshot        = var.environment != "production"
+  final_snapshot_identifier  = var.environment == "production" ? "${local.name}-final" : null
+  copy_tags_to_snapshot      = true
   auto_minor_version_upgrade = true
   tags                       = local.tags
 }
@@ -294,9 +307,52 @@ resource "aws_s3_bucket_lifecycle_configuration" "evidence" {
     id     = "retention"
     status = "Enabled"
     filter {}
+    # Silinen/üzerine yazılan nesneler (KVKK silme, saklama temizliği) en fazla
+    # 7 gün eski sürüm olarak kalır; kazara silmeye karşı kısa kurtarma penceresi.
     noncurrent_version_expiration {
-      noncurrent_days = 30
+      noncurrent_days = 7
     }
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 1
+    }
+  }
+}
+
+data "aws_iam_policy_document" "evidence_tls_only" {
+  statement {
+    sid     = "DenyInsecureTransport"
+    effect  = "Deny"
+    actions = ["s3:*"]
+    resources = [
+      aws_s3_bucket.evidence.arn,
+      "${aws_s3_bucket.evidence.arn}/*",
+    ]
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "evidence" {
+  bucket     = aws_s3_bucket.evidence.id
+  policy     = data.aws_iam_policy_document.evidence_tls_only.json
+  depends_on = [aws_s3_bucket_public_access_block.evidence]
+}
+
+# Tarayıcı, imzalı POST ile kanıt dosyasını doğrudan bucket'a yükler.
+resource "aws_s3_bucket_cors_configuration" "evidence" {
+  bucket = aws_s3_bucket.evidence.id
+  cors_rule {
+    allowed_methods = ["POST"]
+    allowed_origins = [local.app_url]
+    allowed_headers = ["*"]
+    max_age_seconds = 600
   }
 }
 
@@ -345,8 +401,12 @@ resource "aws_iam_role_policy_attachment" "execution" {
 
 data "aws_iam_policy_document" "execution_secrets" {
   statement {
-    actions   = ["secretsmanager:GetSecretValue"]
-    resources = [aws_secretsmanager_secret.db_password.arn, aws_secretsmanager_secret.jwt_keys.arn]
+    actions = ["secretsmanager:GetSecretValue"]
+    resources = [
+      aws_secretsmanager_secret.db_password.arn,
+      aws_secretsmanager_secret.jwt_keys.arn,
+      aws_secretsmanager_secret.app.arn,
+    ]
   }
   statement {
     actions   = ["kms:Decrypt"]
@@ -369,8 +429,14 @@ resource "aws_iam_role" "api_task" {
 
 data "aws_iam_policy_document" "api_s3" {
   statement {
-    actions   = ["s3:GetObject", "s3:PutObject"]
+    actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
     resources = ["${aws_s3_bucket.evidence.arn}/*"]
+  }
+  # HEAD on a missing key returns 404 (not 403) only with ListBucket; prefix
+  # deletion (KVKK) lists objects.
+  statement {
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.evidence.arn]
   }
   statement {
     actions   = ["kms:Decrypt", "kms:GenerateDataKey"]
@@ -397,11 +463,14 @@ resource "aws_cloudwatch_log_group" "services" {
 # ---------------------------------------------------------------- alb
 
 resource "aws_lb" "main" {
-  name_prefix        = "vr-"
-  load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb.id]
-  subnets            = aws_subnet.public[*].id
-  tags               = local.tags
+  name_prefix                = "vr-"
+  load_balancer_type         = "application"
+  security_groups            = [aws_security_group.alb.id]
+  subnets                    = aws_subnet.public[*].id
+  drop_invalid_header_fields = true
+  # Live-operation streams send a keepalive every 15 s.
+  idle_timeout = 60
+  tags         = local.tags
 }
 
 resource "aws_lb_target_group" "api" {
@@ -514,14 +583,49 @@ resource "aws_ecs_cluster" "main" {
 }
 
 locals {
-  api_environment = [
+  app_url = "https://${var.app_domain}"
+
+  # API, worker ve scheduler aynı imajı ve yapılandırmayı paylaşır.
+  app_environment = [
     { name = "VISIONROUTE_ENVIRONMENT", value = var.environment },
-    { name = "VISIONROUTE_JWT_PRIVATE_KEY_PATH", value = "/secrets/jwt-private.pem" },
-    { name = "VISIONROUTE_JWT_PUBLIC_KEY_PATH", value = "/secrets/jwt-public.pem" },
-    { name = "VISIONROUTE_COOKIE_SECURE", value = "true" },
-    { name = "VISIONROUTE_S3_BUCKET_EVIDENCE", value = aws_s3_bucket.evidence.bucket },
+    { name = "VISIONROUTE_DATABASE_HOST", value = aws_db_instance.main.address },
+    { name = "VISIONROUTE_DATABASE_PORT", value = tostring(aws_db_instance.main.port) },
+    { name = "VISIONROUTE_DATABASE_NAME", value = aws_db_instance.main.db_name },
+    { name = "VISIONROUTE_DATABASE_USER", value = aws_db_instance.main.username },
+    { name = "VISIONROUTE_DATABASE_SSL", value = "true" },
     { name = "VISIONROUTE_REDIS_URL", value = "redis://${aws_elasticache_cluster.main.cache_nodes[0].address}:6379/0" },
+    { name = "VISIONROUTE_RATE_LIMIT_BACKEND", value = "redis" },
+    { name = "VISIONROUTE_COOKIE_SECURE", value = "true" },
+    { name = "VISIONROUTE_PUBLIC_APP_URL", value = local.app_url },
+    { name = "VISIONROUTE_PUBLIC_API_URL", value = local.app_url },
+    { name = "VISIONROUTE_CORS_ORIGINS", value = jsonencode([local.app_url]) },
+    { name = "VISIONROUTE_STORAGE_BACKEND", value = "s3" },
+    { name = "VISIONROUTE_S3_BUCKET_EVIDENCE", value = aws_s3_bucket.evidence.bucket },
+    { name = "VISIONROUTE_S3_REGION", value = var.aws_region },
+    { name = "VISIONROUTE_MAIL_BACKEND", value = "smtp" },
+    { name = "VISIONROUTE_SMTP_HOST", value = var.smtp_host },
+    { name = "VISIONROUTE_SMTP_PORT", value = tostring(var.smtp_port) },
+    { name = "VISIONROUTE_SMTP_FROM", value = var.smtp_from },
+    { name = "VISIONROUTE_SMTP_USERNAME", value = var.smtp_username },
+    { name = "VISIONROUTE_SMTP_STARTTLS", value = "true" },
+    { name = "VISIONROUTE_FIELD_ENCRYPTION_PRIMARY_KEY_ID", value = var.field_encryption_primary_key_id },
+    # Görevler yalnızca ALB güvenlik grubundan erişilebilir; X-Forwarded-For'a güvenilir.
+    { name = "FORWARDED_ALLOW_IPS", value = "*" },
   ]
+
+  app_secrets = [
+    { name = "VISIONROUTE_DATABASE_PASSWORD", valueFrom = aws_secretsmanager_secret.db_password.arn },
+    { name = "VISIONROUTE_JWT_PRIVATE_KEY", valueFrom = "${aws_secretsmanager_secret.jwt_keys.arn}:private::" },
+    { name = "VISIONROUTE_JWT_PUBLIC_KEY", valueFrom = "${aws_secretsmanager_secret.jwt_keys.arn}:public::" },
+    { name = "VISIONROUTE_FIELD_ENCRYPTION_KEYS", valueFrom = "${aws_secretsmanager_secret.app.arn}:field_encryption_keys::" },
+    { name = "VISIONROUTE_SMTP_PASSWORD", valueFrom = "${aws_secretsmanager_secret.app.arn}:smtp_password::" },
+    { name = "VISIONROUTE_METRICS_TOKEN", valueFrom = "${aws_secretsmanager_secret.app.arn}:metrics_token::" },
+  ]
+
+  backend_processes = {
+    worker    = { command = ["visionroute", "worker", "run"], desired_count = var.worker_desired_count }
+    scheduler = { command = ["visionroute", "scheduler", "run"], desired_count = var.scheduler_desired_count }
+  }
 }
 
 resource "aws_ecs_task_definition" "api" {
@@ -534,17 +638,12 @@ resource "aws_ecs_task_definition" "api" {
   task_role_arn            = aws_iam_role.api_task.arn
   container_definitions = jsonencode([
     {
-      name      = "api"
-      image     = "${aws_ecr_repository.api.repository_url}:${var.image_tag}"
-      essential = true
+      name         = "api"
+      image        = "${aws_ecr_repository.api.repository_url}:${var.image_tag}"
+      essential    = true
       portMappings = [{ containerPort = 8000, protocol = "tcp" }]
-      environment = local.api_environment
-      secrets = [
-        {
-          name      = "VISIONROUTE_DATABASE_PASSWORD"
-          valueFrom = aws_secretsmanager_secret.db_password.arn
-        }
-      ]
+      environment  = local.app_environment
+      secrets      = local.app_secrets
       logConfiguration = {
         logDriver = "awslogs"
         options = {
@@ -575,11 +674,19 @@ resource "aws_ecs_service" "api" {
   }
   deployment_minimum_healthy_percent = 100
   deployment_maximum_percent         = 200
-  tags                               = local.tags
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+  depends_on = [aws_lb_listener.http]
+  tags       = local.tags
 }
 
-resource "aws_ecs_task_definition" "worker" {
-  family                   = "${local.name}-worker"
+# Worker ve scheduler: aynı imaj, farklı komut. Scheduler tek replika çalışır
+# (ek replikalar advisory lock nedeniyle boşta kalır).
+resource "aws_ecs_task_definition" "backend" {
+  for_each                 = local.backend_processes
+  family                   = "${local.name}-${each.key}"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = var.api_cpu
@@ -588,23 +695,18 @@ resource "aws_ecs_task_definition" "worker" {
   task_role_arn            = aws_iam_role.api_task.arn
   container_definitions = jsonencode([
     {
-      name      = "worker"
-      image     = "${aws_ecr_repository.api.repository_url}:${var.image_tag}"
-      essential = true
-      command   = ["visionroute", "worker", "run"]
-      environment = local.api_environment
-      secrets = [
-        {
-          name      = "VISIONROUTE_DATABASE_PASSWORD"
-          valueFrom = aws_secretsmanager_secret.db_password.arn
-        }
-      ]
+      name        = each.key
+      image       = "${aws_ecr_repository.api.repository_url}:${var.image_tag}"
+      essential   = true
+      command     = each.value.command
+      environment = local.app_environment
+      secrets     = local.app_secrets
       logConfiguration = {
         logDriver = "awslogs"
         options = {
-          awslogs-group         = aws_cloudwatch_log_group.services["worker"].name
+          awslogs-group         = aws_cloudwatch_log_group.services[each.key].name
           awslogs-region        = var.aws_region
-          awslogs-stream-prefix = "worker"
+          awslogs-stream-prefix = each.key
         }
       }
     }
@@ -612,17 +714,152 @@ resource "aws_ecs_task_definition" "worker" {
   tags = local.tags
 }
 
-resource "aws_ecs_service" "worker" {
-  name            = "worker"
+resource "aws_ecs_service" "backend" {
+  for_each        = local.backend_processes
+  name            = each.key
   cluster         = aws_ecs_cluster.main.id
-  task_definition = aws_ecs_task_definition.worker.arn
-  desired_count   = var.worker_desired_count
+  task_definition = aws_ecs_task_definition.backend[each.key].arn
+  desired_count   = each.value.desired_count
   launch_type     = "FARGATE"
   network_configuration {
     subnets         = aws_subnet.private[*].id
     security_groups = [aws_security_group.service.id]
   }
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
   tags = local.tags
+}
+
+resource "aws_ecs_task_definition" "web" {
+  family                   = "${local.name}-web"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = 256
+  memory                   = 512
+  execution_role_arn       = aws_iam_role.execution.arn
+  # No task role: the web server makes no AWS API calls.
+  container_definitions = jsonencode([
+    {
+      name         = "web"
+      image        = "${aws_ecr_repository.web.repository_url}:${var.image_tag}"
+      essential    = true
+      portMappings = [{ containerPort = 3000, protocol = "tcp" }]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.services["web"].name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "web"
+        }
+      }
+    }
+  ])
+  tags = local.tags
+}
+
+resource "aws_ecs_service" "web" {
+  name            = "web"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.web.arn
+  desired_count   = var.web_desired_count
+  launch_type     = "FARGATE"
+  network_configuration {
+    subnets         = aws_subnet.private[*].id
+    security_groups = [aws_security_group.service.id]
+  }
+  load_balancer {
+    target_group_arn = aws_lb_target_group.web.arn
+    container_name   = "web"
+    container_port   = 3000
+  }
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+  depends_on = [aws_lb_listener.http]
+  tags       = local.tags
+}
+
+# ---------------------------------------------------------------- ci/cd (optional)
+
+# GitHub Actions OIDC: uzun ömürlü AWS anahtarı olmadan imaj itme ve migration
+# görevi çalıştırma. Terraform plan/apply ayrıca durum bucket'ına ve yönetilen
+# kaynaklara erişim gerektirir; bu yetki bu role bilinçli olarak VERİLMEZ
+# (bkz. docs/operations/deployment.md).
+resource "aws_iam_openid_connect_provider" "github" {
+  count           = var.github_repository == "" ? 0 : 1
+  url             = "https://token.actions.githubusercontent.com"
+  client_id_list  = ["sts.amazonaws.com"]
+  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
+  tags            = local.tags
+}
+
+data "aws_iam_policy_document" "github_assume" {
+  count = var.github_repository == "" ? 0 : 1
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.github[0].arn]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+    condition {
+      test     = "StringLike"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:${var.github_repository}:environment:${var.environment}"]
+    }
+  }
+}
+
+data "aws_iam_policy_document" "github_deploy" {
+  count = var.github_repository == "" ? 0 : 1
+  statement {
+    actions   = ["ecr:GetAuthorizationToken"]
+    resources = ["*"]
+  }
+  statement {
+    actions = [
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:CompleteLayerUpload",
+      "ecr:InitiateLayerUpload",
+      "ecr:PutImage",
+      "ecr:UploadLayerPart",
+      "ecr:BatchGetImage",
+    ]
+    resources = [aws_ecr_repository.api.arn, aws_ecr_repository.web.arn]
+  }
+  statement {
+    actions   = ["ecs:RunTask", "ecs:DescribeTasks", "ecs:DescribeServices", "ecs:DescribeTaskDefinition"]
+    resources = ["*"]
+    condition {
+      test     = "ArnEquals"
+      variable = "ecs:cluster"
+      values   = [aws_ecs_cluster.main.arn]
+    }
+  }
+  statement {
+    actions   = ["iam:PassRole"]
+    resources = [aws_iam_role.execution.arn, aws_iam_role.api_task.arn]
+  }
+}
+
+resource "aws_iam_role" "github_deploy" {
+  count              = var.github_repository == "" ? 0 : 1
+  name_prefix        = "${local.name}-gh-"
+  assume_role_policy = data.aws_iam_policy_document.github_assume[0].json
+  tags               = local.tags
+}
+
+resource "aws_iam_role_policy" "github_deploy" {
+  count  = var.github_repository == "" ? 0 : 1
+  role   = aws_iam_role.github_deploy[0].id
+  policy = data.aws_iam_policy_document.github_deploy[0].json
 }
 
 # ---------------------------------------------------------------- budget

@@ -1,16 +1,62 @@
 # Local development stack. NOT for production use.
 # Demo credentials below exist only for local development and are unsafe anywhere else.
+#
+#   docker compose up -d                      # infrastructure only (postgres, redis, minio, mailpit)
+#   docker compose --profile full up -d --build   # + migrate, api, worker, scheduler, web
+#
+# The full profile needs JWT keys and a field-encryption key:
+#   poetry run visionroute keys generate --out .dev/keys
+#   poetry run visionroute keys generate-field-key   # copy both lines into .env
+# Host ports are configurable (VR_*_PORT) when defaults are taken.
 name: visionroute
+
+x-backend: &backend
+  image: visionroute-api:local
+  build:
+    context: .
+    dockerfile: infra/docker/api.Dockerfile
+  env_file:
+    - path: .env
+      required: false
+  environment: &backend-env
+    VISIONROUTE_ENVIRONMENT: local
+    VISIONROUTE_DATABASE_URL: postgresql+asyncpg://visionroute:visionroute@postgres:5432/visionroute
+    VISIONROUTE_REDIS_URL: redis://redis:6379/0
+    VISIONROUTE_RATE_LIMIT_BACKEND: redis
+    VISIONROUTE_JWT_PRIVATE_KEY_PATH: /keys/jwt-private.pem
+    VISIONROUTE_JWT_PUBLIC_KEY_PATH: /keys/jwt-public.pem
+    VISIONROUTE_MAIL_BACKEND: smtp
+    VISIONROUTE_SMTP_HOST: mailpit
+    VISIONROUTE_SMTP_PORT: "1025"
+    VISIONROUTE_STORAGE_BACKEND: s3
+    VISIONROUTE_S3_ENDPOINT_URL: http://minio:9000
+    VISIONROUTE_S3_PUBLIC_ENDPOINT_URL: http://localhost:${VR_MINIO_PORT:-9000}
+    VISIONROUTE_S3_ACCESS_KEY_ID: visionroute
+    VISIONROUTE_S3_SECRET_ACCESS_KEY: visionroute-dev-only
+    VISIONROUTE_PUBLIC_APP_URL: http://localhost:${VR_WEB_PORT:-3000}
+    VISIONROUTE_PUBLIC_API_URL: http://localhost:${VR_API_PORT:-8000}
+    VISIONROUTE_CORS_ORIGINS: '["http://localhost:${VR_WEB_PORT:-3000}"]'
+  volumes:
+    - ./.dev/keys:/keys:ro
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  profiles: ["full"]
 
 services:
   postgres:
     image: postgis/postgis:17-3.5
+    # The official PostGIS image is published for linux/amd64 only; Apple
+    # Silicon runs it under Docker Desktop emulation.
+    platform: linux/amd64
     environment:
       POSTGRES_USER: visionroute
       POSTGRES_PASSWORD: visionroute
       POSTGRES_DB: visionroute
     ports:
-      - "5433:5432"
+      - "${VR_PG_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -20,9 +66,9 @@ services:
       retries: 10
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.4-alpine
     ports:
-      - "6379:6379"
+      - "${VR_REDIS_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -30,62 +76,82 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio:latest
+    # Docker Hub no longer hosts minio/minio; the project publishes on quay.io.
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: visionroute
       MINIO_ROOT_PASSWORD: visionroute-dev-only
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${VR_MINIO_PORT:-9000}:9000"
+      - "${VR_MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - miniodata:/data
 
   mailpit:
-    image: axllent/mailpit:latest
+    image: axllent/mailpit:v1.27.10
     ports:
-      - "1025:1025"   # SMTP
-      - "8025:8025"   # Web UI
+      - "${VR_SMTP_PORT:-1025}:1025"   # SMTP
+      - "${VR_MAILPIT_PORT:-8025}:8025" # Web UI
+
+  migrate:
+    <<: *backend
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    healthcheck:
+      disable: true
 
   api:
-    build:
-      context: .
-      dockerfile: infra/docker/api.Dockerfile
-    env_file: .env
-    environment:
-      VISIONROUTE_DATABASE_URL: postgresql+asyncpg://visionroute:visionroute@postgres:5432/visionroute
-      VISIONROUTE_REDIS_URL: redis://redis:6379/0
+    <<: *backend
     ports:
-      - "8000:8000"
+      - "${VR_API_PORT:-8000}:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
-    profiles: ["full"]
+      minio:
+        condition: service_started
+      mailpit:
+        condition: service_started
 
   worker:
-    build:
-      context: .
-      dockerfile: infra/docker/api.Dockerfile
-    command: ["visionroute", "worker", "run"]
-    env_file: .env
-    environment:
-      VISIONROUTE_DATABASE_URL: postgresql+asyncpg://visionroute:visionroute@postgres:5432/visionroute
-      VISIONROUTE_REDIS_URL: redis://redis:6379/0
+    <<: *backend
+    # The image healthcheck probes the API port; background processes are
+    # checked through their internal metrics endpoint instead.
+    command: ["visionroute", "worker", "run", "--metrics-port", "9101"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9101/"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
     depends_on:
-      postgres:
-        condition: service_healthy
-    profiles: ["full"]
+      migrate:
+        condition: service_completed_successfully
+
+  scheduler:
+    <<: *backend
+    command: ["visionroute", "scheduler", "run", "--metrics-port", "9102"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9102/"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
   web:
+    image: visionroute-web:local
     build:
       context: .
       dockerfile: infra/docker/web.Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:${VR_API_PORT:-8000}
     ports:
-      - "3000:3000"
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
+      - "${VR_WEB_PORT:-3000}:3000"
+    depends_on:
+      - api
     profiles: ["full"]
 
 volumes:

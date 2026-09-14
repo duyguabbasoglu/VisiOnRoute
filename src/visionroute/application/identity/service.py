@@ -75,9 +75,11 @@ class IdentityService:
         *,
         mail: MailService | None = None,
         invitation_ttl_days: int = 7,
+        refresh_reuse_grace_seconds: int = 0,
     ) -> None:
         self._db = session
         self._refresh_ttl = timedelta(seconds=refresh_ttl_seconds)
+        self._reuse_grace = timedelta(seconds=refresh_reuse_grace_seconds)
         self._mail = mail
         self._invitation_ttl = timedelta(days=invitation_ttl_days)
 
@@ -242,19 +244,32 @@ class IdentityService:
             raise InvalidCredentialsError
 
         if session.revoked_at is not None:
-            # Reuse of a rotated/revoked token → assume theft, kill the family.
-            await self._revoke_family(session.family_id, reuse=True)
+            successor = await self._unused_successor(ctx, session, now)
+            if successor is None:
+                # Reuse of a rotated/revoked token → assume theft, kill the family.
+                await self._revoke_family(session.family_id, reuse=True)
+                await record_audit(
+                    self._db,
+                    ctx,
+                    action="auth.refresh_reuse_detected",
+                    resource_type="session",
+                    resource_id=str(session.id),
+                    organization_id=session.organization_id,
+                )
+                # Family revocation must survive the error-path rollback.
+                await self._db.commit()
+                raise InvalidCredentialsError
+            # The client never received the previous rotation (its successor is
+            # untouched): replace that successor instead of raising an alarm.
+            successor.revoked_at = now
             await record_audit(
                 self._db,
                 ctx,
-                action="auth.refresh_reuse_detected",
+                action="auth.refresh_retried",
                 resource_type="session",
                 resource_id=str(session.id),
                 organization_id=session.organization_id,
             )
-            # Family revocation must survive the error-path rollback.
-            await self._db.commit()
-            raise InvalidCredentialsError
 
         if session.expires_at <= now:
             raise InvalidCredentialsError
@@ -263,7 +278,8 @@ class IdentityService:
         if user is None or user.status != "active":
             raise InvalidCredentialsError
 
-        session.revoked_at = now
+        if session.revoked_at is None:
+            session.revoked_at = now
         cleartext, new_digest = generate_opaque_secret("vrt")
         new_session = Session(
             user_id=user.id,
@@ -277,6 +293,7 @@ class IdentityService:
         )
         self._db.add(new_session)
         await self._db.flush()
+        session.replaced_by_id = new_session.id
         membership = await self.get_active_membership(user.id)
         return AuthenticatedUser(
             user=user,
@@ -284,6 +301,30 @@ class IdentityService:
             refresh_token_cleartext=cleartext,
             session_id=new_session.id,
         )
+
+    async def _unused_successor(
+        self, ctx: RequestContext, session: Session, now: datetime
+    ) -> Session | None:
+        """Successor of a rotated session that may be replaced by a retry.
+
+        All conditions must hold: a retry window is configured, ``session`` was
+        rotated (not logged out or superseded) within that window, no reuse was
+        detected, the request comes from the same user agent, and the successor
+        is still open (it was never used for a further rotation).
+        """
+        if (
+            self._reuse_grace <= timedelta(0)
+            or session.replaced_by_id is None
+            or session.reuse_detected_at is not None
+            or session.revoked_at is None
+            or now - session.revoked_at > self._reuse_grace
+            or session.user_agent != ctx.user_agent
+        ):
+            return None
+        successor = await self._db.get(Session, session.replaced_by_id)
+        if successor is None or successor.revoked_at is not None:
+            return None
+        return successor
 
     async def _revoke_family(self, family_id: uuid.UUID, *, reuse: bool) -> None:
         now = datetime.now(UTC)

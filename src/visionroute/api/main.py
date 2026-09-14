@@ -15,6 +15,7 @@ from visionroute.api.middleware import register_middleware
 from visionroute.api.routers.health import router as health_router
 from visionroute.api.routers.metrics import router as metrics_router
 from visionroute.config.settings import Settings, get_settings
+from visionroute.domain.storage import StorageError
 from visionroute.infrastructure.db.engine import build_engine, build_session_factory
 from visionroute.infrastructure.ratelimit import build_rate_limiter
 from visionroute.infrastructure.realtime import LiveEventHub
@@ -50,6 +51,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.rate_limiter = build_rate_limiter(settings)
         # Object storage clients are lazy: no network I/O until first use.
         app.state.object_storage = build_object_storage(settings)
+        if not settings.environment.is_production_like:
+            # Local MinIO convenience; production buckets come from Terraform.
+            try:
+                await app.state.object_storage.ensure_bucket()
+            except StorageError:
+                logger.warning("object_storage_bucket_unavailable")
         app.state.live_hub = LiveEventHub(settings.database_url)
         await app.state.live_hub.start()
         try:

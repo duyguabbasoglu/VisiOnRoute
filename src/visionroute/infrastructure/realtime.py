@@ -20,6 +20,7 @@ import json
 import uuid
 from collections import defaultdict
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import asyncpg
 from sqlalchemy import text
@@ -44,9 +45,17 @@ async def notify_live(session: AsyncSession, organization_id: uuid.UUID, kind: s
     )
 
 
+def asyncpg_dsn(database_url: str) -> str:
+    """SQLAlchemy asyncpg URL -> libpq-style DSN for a raw asyncpg connection
+    (SQLAlchemy's ``ssl=`` query option is ``sslmode=`` for asyncpg DSNs)."""
+    parts = urlsplit(database_url.replace("postgresql+asyncpg://", "postgresql://", 1))
+    query = [("sslmode" if key == "ssl" else key, value) for key, value in parse_qsl(parts.query)]
+    return urlunsplit(parts._replace(query=urlencode(query)))
+
+
 class LiveEventHub:
     def __init__(self, database_url: str) -> None:
-        self._dsn = database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+        self._dsn = asyncpg_dsn(database_url)
         self._subscribers: dict[uuid.UUID, set[asyncio.Queue[str]]] = defaultdict(set)
         self._task: asyncio.Task[None] | None = None
         self._closing = False

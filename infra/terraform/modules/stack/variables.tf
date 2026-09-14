@@ -92,3 +92,59 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+variable "app_domain" {
+  description = "Uygulamanın genel alan adı (ör. filo.ornek.com.tr). ACM sertifikası bu adı kapsamalı; web ve API aynı kökten sunulur."
+  type        = string
+  validation {
+    condition     = can(regex("^[a-z0-9.-]+$", var.app_domain))
+    error_message = "app_domain yalnızca küçük harf, rakam, nokta ve tire içermelidir (şema olmadan)."
+  }
+}
+
+variable "web_desired_count" {
+  type    = number
+  default = 1
+}
+
+variable "scheduler_desired_count" {
+  description = "Scheduler replika sayısı (0 veya 1; ek replikalar kilit nedeniyle boşta kalır)."
+  type        = number
+  default     = 1
+  validation {
+    condition     = contains([0, 1], var.scheduler_desired_count)
+    error_message = "scheduler_desired_count 0 veya 1 olmalıdır."
+  }
+}
+
+variable "smtp_host" {
+  description = "İşlemsel e-posta sağlayıcısının SMTP sunucusu."
+  type        = string
+}
+
+variable "smtp_port" {
+  type    = number
+  default = 587
+}
+
+variable "smtp_from" {
+  description = "Gönderen adresi (alan adı SPF/DKIM ile doğrulanmış olmalı)."
+  type        = string
+}
+
+variable "smtp_username" {
+  type    = string
+  default = ""
+}
+
+variable "field_encryption_primary_key_id" {
+  description = "app-secrets içindeki field_encryption_keys JSON'unda birincil anahtar kimliği."
+  type        = string
+  default     = "k1"
+}
+
+variable "github_repository" {
+  description = "owner/repo; boş değilse GitHub Actions OIDC dağıtım rolü oluşturulur."
+  type        = string
+  default     = ""
+}

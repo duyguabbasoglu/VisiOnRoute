@@ -17,7 +17,8 @@ ENV VISIONROUTE_PDF_FONT_DIR=/usr/share/fonts/truetype/dejavu
 FROM base AS build
 RUN pip install "poetry==${POETRY_VERSION}"
 WORKDIR /app
-COPY pyproject.toml poetry.lock ./
+# README.md is the package readme declared in pyproject.toml (needed to install the project).
+COPY pyproject.toml poetry.lock README.md ./
 RUN poetry install --only main --no-root
 COPY src ./src
 COPY alembic.ini ./
@@ -37,5 +38,11 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
     CMD curl -fsS http://localhost:8000/health/live || exit 1
 
 # Default command runs the API; compose/ECS override for worker & scheduler.
+# --proxy-headers: client IPs come from X-Forwarded-For, trusted only from
+# FORWARDED_ALLOW_IPS (127.0.0.1 by default; ECS sets it because tasks are
+# reachable only from the load balancer's security group).
+# Keep-alive exceeds the ALB idle timeout (60 s) to avoid 502s on reused
+# connections.
 CMD ["uvicorn", "visionroute.api.main:create_app", "--factory", \
-     "--host", "0.0.0.0", "--port", "8000"]
+     "--host", "0.0.0.0", "--port", "8000", \
+     "--proxy-headers", "--timeout-keep-alive", "75"]

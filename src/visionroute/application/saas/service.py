@@ -2,8 +2,8 @@
 
 Limits are enforced in the application layer (deny-by-default): creation
 paths call ``enforce_*`` before writing. ``-1`` means unlimited. The default
-billing mode is manual invoicing (Turkish enterprise sales, ADR-0009); the
-Stripe adapter activates only when configured with credentials.
+billing mode is manual invoicing (Turkish enterprise sales, ADR-0009); no
+payment provider is integrated.
 """
 
 from __future__ import annotations

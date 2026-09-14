@@ -108,6 +108,9 @@ def test_settings(test_database_url: str, jwt_keys: tuple[Path, Path]) -> Settin
         jwt_private_key_path=private_path,
         jwt_public_key_path=public_path,
         access_token_ttl_seconds=900,
+        # Strict reuse detection by default; the retry window has its own tests
+        # (tests/integration/test_refresh_retry.py).
+        refresh_reuse_grace_seconds=0,
         field_encryption_keys={"test-k1": TEST_FIELD_KEY},
         field_encryption_primary_key_id="test-k1",
         mail_backend="memory",
