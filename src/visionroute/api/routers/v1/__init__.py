@@ -16,6 +16,7 @@ from visionroute.api.routers.v1.notifications_reports import (
 from visionroute.api.routers.v1.operations import router as operations_router
 from visionroute.api.routers.v1.organizations import router as organizations_router
 from visionroute.api.routers.v1.platform import router as platform_router
+from visionroute.api.routers.v1.privacy import router as privacy_router
 from visionroute.api.routers.v1.risk import router as risk_router
 from visionroute.api.routers.v1.safety_events import router as safety_events_router
 from visionroute.api.routers.v1.storage_local import router as storage_local_router
@@ -33,4 +34,5 @@ router.include_router(storage_local_router)
 router.include_router(coaching_router)
 router.include_router(risk_router)
 router.include_router(notifications_reports_router)
+router.include_router(privacy_router)
 router.include_router(platform_router)

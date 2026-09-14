@@ -224,3 +224,65 @@ export const roadRiskSchema = z.object({
   review_status: z.string(),
 });
 export type RoadRisk = z.infer<typeof roadRiskSchema>;
+
+export const privacyRequestSchema = z.object({
+  id: z.string(),
+  kind: z.enum(["export", "erasure"]),
+  kind_label: z.string(),
+  subject_type: z.enum(["driver", "user"]),
+  subject_label: z.string(),
+  subject_id: z.string(),
+  subject_name: z.string().nullable(),
+  status: z.enum(["pending", "processing", "completed", "failed", "canceled"]),
+  status_label: z.string(),
+  reason: z.string().nullable(),
+  created_at: z.string(),
+  completed_at: z.string().nullable(),
+  download_available: z.boolean(),
+  artifact_expires_at: z.string().nullable(),
+  result: z.record(z.union([z.number(), z.string(), z.boolean()])),
+  error_code: z.string().nullable(),
+});
+export type PrivacyRequest = z.infer<typeof privacyRequestSchema>;
+
+export const retentionSchema = z.object({
+  plan_days: z.number(),
+  min_days: z.number(),
+  categories: z.array(
+    z.object({
+      key: z.string(),
+      label: z.string(),
+      override_days: z.number().nullable(),
+      effective_days: z.number(),
+    }),
+  ),
+});
+export type Retention = z.infer<typeof retentionSchema>;
+
+export const signedLinkSchema = z.object({ url: z.string().url(), expires_in: z.number() });
+
+export const PRIVACY_ERROR_LABELS: Record<string, string> = {
+  SUBJECT_NOT_FOUND: "Kişi bulunamadı (kayıt silinmiş olabilir).",
+  OWNER_CANNOT_BE_ERASED: "Organizasyon sahibinin verileri silinemez; önce sahipliği devredin.",
+};
+
+export const PRIVACY_RESULT_LABELS: Record<string, string> = {
+  assignments: "Araç ataması",
+  trips: "Sefer",
+  safety_events: "Güvenlik olayı",
+  coaching_actions: "Koçluk görevi",
+  telemetry_points: "Telemetri noktası",
+  media_files: "Medya dosyası",
+  sessions: "Oturum",
+  audit_entries: "İşlem kaydı",
+  reviews: "Olay incelemesi",
+  emails: "E-posta",
+  telemetry_points_deleted: "Silinen telemetri noktası",
+  trips_pseudonymized: "Anonimleştirilen sefer",
+  safety_events_pseudonymized: "Anonimleştirilen olay",
+  evidence_media_deleted: "Silinen kanıt medyası",
+  coaching_actions_redacted: "Notları temizlenen koçluk görevi",
+  coaching_actions_unassigned: "Sorumlusu kaldırılan koçluk görevi",
+  emails_deleted: "Silinen e-posta kaydı",
+  invitations_deleted: "Silinen davet",
+};

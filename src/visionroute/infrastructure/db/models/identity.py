@@ -103,7 +103,7 @@ class User(IdMixin, TimestampMixin, Base):
 
     __table_args__ = (
         Index("ix_users_email_lower", func.lower(email), unique=True),
-        CheckConstraint("status IN ('active','disabled')", name="status_valid"),
+        CheckConstraint("status IN ('active','disabled','erased')", name="status_valid"),
         CheckConstraint(
             "platform_role IS NULL OR platform_role IN ('super_admin','support')",
             name="platform_role_valid",

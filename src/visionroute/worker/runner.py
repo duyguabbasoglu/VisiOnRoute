@@ -25,6 +25,7 @@ from visionroute.application.notifications.service import (
     PROD_URL_POLICY,
     NotificationService,
 )
+from visionroute.application.privacy.processor import PrivacyProcessor
 from visionroute.application.safety.engine import SafetyEngine
 from visionroute.application.telemetry.service import TelemetryService
 from visionroute.config.settings import Settings
@@ -34,6 +35,7 @@ from visionroute.infrastructure.db.models.system import OutboxEvent
 from visionroute.infrastructure.db.tenancy import set_rls_bypass
 from visionroute.infrastructure.mail import build_mail_sender
 from visionroute.infrastructure.security.crypto import build_field_cipher
+from visionroute.infrastructure.storage import build_object_storage
 from visionroute.observability.logging import get_logger
 
 logger = get_logger("visionroute.worker")
@@ -50,6 +52,9 @@ class Worker:
         self._cipher = build_field_cipher(settings)
         self._mail_delivery = MailDeliveryService(
             self._factory, build_mail_sender(settings), self._cipher, settings
+        )
+        self._privacy = PrivacyProcessor(
+            self._factory, build_object_storage(settings), self._cipher
         )
         self._stopping = False
 
@@ -69,6 +74,7 @@ class Worker:
         handled = await self._process_outbox_batch()
         handled += await self._deliver_webhooks()
         handled += (await self._mail_delivery.deliver_due()).handled
+        handled += await self._privacy.process_due()
         return handled
 
     async def _process_outbox_batch(self) -> int:
