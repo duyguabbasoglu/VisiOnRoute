@@ -13,6 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from visionroute.config.settings import Settings
+from visionroute.infrastructure.security.tokens import _KEY_ID as KEY_ID
 from visionroute.infrastructure.security.tokens import JwtService, TokenError
 
 pytestmark = pytest.mark.security
@@ -92,6 +93,7 @@ def test_expired_token_rejected(jwt_service: JwtService, client: TestClient) -> 
         },
         private_pem,
         algorithm="RS256",
+        headers={"kid": KEY_ID},
     )
     with pytest.raises(TokenError):
         jwt_service.verify_access_token(expired)
@@ -114,6 +116,7 @@ def test_wrong_audience_rejected(jwt_service: JwtService) -> None:
         },
         private_pem,
         algorithm="RS256",
+        headers={"kid": KEY_ID},
     )
     with pytest.raises(TokenError):
         jwt_service.verify_access_token(wrong_aud)
@@ -133,6 +136,7 @@ def test_missing_required_claims_rejected(jwt_service: JwtService) -> None:
         },
         private_pem,
         algorithm="RS256",
+        headers={"kid": KEY_ID},
     )
     with pytest.raises(TokenError):
         jwt_service.verify_access_token(no_jti)
@@ -155,3 +159,33 @@ def test_oversized_login_body_rejected(client: TestClient) -> None:
         json={"email": "a@b.example", "password": "x" * 10_000},
     )
     assert response.status_code == 422
+
+
+def _valid_claims() -> dict[str, object]:
+    now = datetime.now(UTC)
+    return {
+        "iss": "visionroute",
+        "aud": "visionroute-api",
+        "sub": str(uuid.uuid4()),
+        "iat": now,
+        "nbf": now,
+        "exp": now + timedelta(minutes=10),
+        "jti": "kid-check",
+    }
+
+
+def test_unknown_or_missing_kid_rejected(jwt_service: JwtService, client: TestClient) -> None:
+    private_pem = jwt_service._private_key
+    foreign_kid = pyjwt.encode(
+        _valid_claims(), private_pem, algorithm="RS256", headers={"kid": "baska-anahtar"}
+    )
+    no_kid = pyjwt.encode(_valid_claims(), private_pem, algorithm="RS256")
+    for token in (foreign_kid, no_kid):
+        with pytest.raises(TokenError):
+            jwt_service.verify_access_token(token)
+        response = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert response.status_code == 401
+
+    # Control: the same claims with the expected kid pass signature checks.
+    valid = pyjwt.encode(_valid_claims(), private_pem, algorithm="RS256", headers={"kid": KEY_ID})
+    assert jwt_service.verify_access_token(valid).jti == "kid-check"

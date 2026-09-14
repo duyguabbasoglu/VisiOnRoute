@@ -13,8 +13,9 @@ from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import quote
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from visionroute.config.fonts import find_unicode_font_dir
@@ -44,6 +45,15 @@ class Settings(BaseSettings):
 
     # --- Database ---
     database_url: str = "postgresql+asyncpg://visionroute:visionroute@localhost:5433/visionroute"
+    # Managed deployments: when host and password are set the URL is composed
+    # from parts, so the password can be injected on its own from a secret
+    # manager (ECS secrets) and is URL-quoted safely.
+    database_host: str | None = None
+    database_port: int = 5432
+    database_name: str = "visionroute"
+    database_user: str = "visionroute"
+    database_password: SecretStr | None = None
+    database_ssl: bool = False
     database_pool_size: int = 10
     database_pool_max_overflow: int = 10
 
@@ -53,10 +63,17 @@ class Settings(BaseSettings):
     # --- JWT (RS256 only; see ADR-0003) ---
     jwt_private_key_path: Path | None = None
     jwt_public_key_path: Path | None = None
+    # PEM contents (e.g. from AWS Secrets Manager); take precedence over paths.
+    jwt_private_key: SecretStr | None = None
+    jwt_public_key: str | None = None
     jwt_issuer: str = "visionroute"
     jwt_audience: str = "visionroute-api"
     access_token_ttl_seconds: int = Field(default=900, le=3600)
     refresh_token_ttl_seconds: int = Field(default=14 * 24 * 3600)
+    # A rotated refresh token may be presented again within this window when its
+    # successor was never used (the rotation response was lost, e.g. a page
+    # navigation aborted it). Outside it, reuse revokes the whole family.
+    refresh_reuse_grace_seconds: int = Field(default=10, ge=0, le=60)
 
     # --- Web ---
     cors_origins: list[str] = ["http://localhost:3000"]
@@ -152,6 +169,26 @@ class Settings(BaseSettings):
             raise ValueError(msg)
         return v
 
+    @field_validator("metrics_token", "smtp_password", "database_password", mode="before")
+    @classmethod
+    def _blank_secret_is_unset(cls, value: object) -> object:
+        # Secret managers often carry optional keys as empty strings.
+        return None if value == "" else value
+
+    @model_validator(mode="after")
+    def _compose_database_url(self) -> Settings:
+        if self.database_host and self.database_password is not None:
+            credentials = (
+                f"{quote(self.database_user, safe='')}:"
+                f"{quote(self.database_password.get_secret_value(), safe='')}"
+            )
+            self.database_url = (
+                f"postgresql+asyncpg://{credentials}@{self.database_host}:{self.database_port}/"
+                f"{quote(self.database_name, safe='')}"
+                + ("?ssl=require" if self.database_ssl else "")
+            )
+        return self
+
     def validate_for_runtime(self) -> list[str]:
         """Return human-readable problems that must block startup.
 
@@ -159,12 +196,16 @@ class Settings(BaseSettings):
         tooling can construct Settings freely.
         """
         problems: list[str] = []
-        if self.jwt_private_key_path is None or not self.jwt_private_key_path.exists():
+        if self.jwt_private_key is None and (
+            self.jwt_private_key_path is None or not self.jwt_private_key_path.exists()
+        ):
             problems.append(
                 "JWT özel anahtarı bulunamadı. Geliştirme için üretin: "
                 "poetry run visionroute keys generate --out .dev/keys"
             )
-        if self.jwt_public_key_path is None or not self.jwt_public_key_path.exists():
+        if self.jwt_public_key is None and (
+            self.jwt_public_key_path is None or not self.jwt_public_key_path.exists()
+        ):
             problems.append("JWT açık anahtarı bulunamadı (VISIONROUTE_JWT_PUBLIC_KEY_PATH).")
         problems.extend(self._field_encryption_problems())
         if self.environment.is_production_like:
@@ -172,6 +213,11 @@ class Settings(BaseSettings):
                 problems.append("Üretim benzeri ortamda debug=true olamaz.")
             if not self.cookie_secure:
                 problems.append("Üretim benzeri ortamda cookie_secure=true olmalıdır.")
+            if not self.database_ssl and "ssl=" not in self.database_url:
+                problems.append(
+                    "Üretim benzeri ortamda veritabanı bağlantısı TLS kullanmalıdır "
+                    "(VISIONROUTE_DATABASE_SSL=true)."
+                )
             if "localhost" in self.database_url:
                 problems.append("Üretim benzeri ortamda localhost veritabanı kullanılamaz.")
             if self.bootstrap_admin_password is not None:

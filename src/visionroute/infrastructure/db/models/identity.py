@@ -263,6 +263,11 @@ class Session(IdMixin, TimestampMixin, Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reuse_detected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set only when this session was rotated into a successor; distinguishes a
+    # retried rotation (lost response) from logout or superseded tokens.
+    replaced_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("sessions.id", ondelete="SET NULL")
+    )
 
     __table_args__ = (
         Index("ix_sessions_user_id", "user_id"),

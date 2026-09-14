@@ -36,6 +36,29 @@ variable "budget_alert_email" {
   default = ""
 }
 
+variable "app_domain" {
+  description = "Uygulama alan adı (ör. filo.ornek.com.tr)."
+  type        = string
+}
+
+variable "smtp_host" {
+  type = string
+}
+
+variable "smtp_from" {
+  type = string
+}
+
+variable "smtp_username" {
+  type    = string
+  default = ""
+}
+
+variable "github_repository" {
+  type    = string
+  default = ""
+}
+
 module "stack" {
   source = "../../modules/stack"
 
@@ -52,8 +75,17 @@ module "stack" {
   certificate_arn         = var.certificate_arn
   monthly_budget_usd      = 1000
   budget_alert_email      = var.budget_alert_email
+  app_domain              = var.app_domain
+  smtp_host               = var.smtp_host
+  smtp_from               = var.smtp_from
+  smtp_username           = var.smtp_username
+  github_repository       = var.github_repository
 }
 
 output "alb_dns_name" {
   value = module.stack.alb_dns_name
+}
+
+output "app_secrets_arn" {
+  value = module.stack.app_secrets_arn
 }

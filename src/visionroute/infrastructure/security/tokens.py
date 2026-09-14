@@ -12,6 +12,7 @@ import secrets
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import jwt
@@ -36,13 +37,27 @@ class AccessTokenClaims:
     issued_at: datetime
 
 
+def _pem(inline: str | None, path: Path | None) -> bytes | None:
+    """PEM from an inline value (escaped newlines allowed) or a file path."""
+    if inline:
+        return inline.replace("\\n", "\n").encode()
+    if path is not None:
+        return path.read_bytes()
+    return None
+
+
 class JwtService:
     def __init__(self, settings: Settings) -> None:
-        if settings.jwt_private_key_path is None or settings.jwt_public_key_path is None:
-            msg = "JWT anahtar yolları yapılandırılmamış."
+        private_key = _pem(
+            settings.jwt_private_key.get_secret_value() if settings.jwt_private_key else None,
+            settings.jwt_private_key_path,
+        )
+        public_key = _pem(settings.jwt_public_key, settings.jwt_public_key_path)
+        if private_key is None or public_key is None:
+            msg = "JWT anahtarları yapılandırılmamış."
             raise TokenError(msg)
-        self._private_key = settings.jwt_private_key_path.read_bytes()
-        self._public_key = settings.jwt_public_key_path.read_bytes()
+        self._private_key = private_key
+        self._public_key = public_key
         self._issuer = settings.jwt_issuer
         self._audience = settings.jwt_audience
         self._ttl = timedelta(seconds=settings.access_token_ttl_seconds)
@@ -78,6 +93,11 @@ class JwtService:
 
     def verify_access_token(self, token: str) -> AccessTokenClaims:
         try:
+            # Only tokens signed with the current key id are accepted (a foreign
+            # or missing kid is rejected before signature verification).
+            if jwt.get_unverified_header(token).get("kid") != _KEY_ID:
+                msg = "Bilinmeyen imzalama anahtarı."
+                raise TokenError(msg)
             payload = jwt.decode(
                 token,
                 self._public_key,

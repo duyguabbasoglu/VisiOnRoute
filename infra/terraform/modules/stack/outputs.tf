@@ -26,3 +26,16 @@ output "ecs_cluster_name" {
 output "jwt_keys_secret_arn" {
   value = aws_secretsmanager_secret.jwt_keys.arn
 }
+
+output "app_secrets_arn" {
+  description = "Uygulama sırları (field_encryption_keys, smtp_password, metrics_token) için JSON secret."
+  value       = aws_secretsmanager_secret.app.arn
+}
+
+output "github_deploy_role_arn" {
+  value = var.github_repository == "" ? null : aws_iam_role.github_deploy[0].arn
+}
+
+output "app_url" {
+  value = local.app_url
+}

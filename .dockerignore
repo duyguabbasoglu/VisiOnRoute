@@ -1,0 +1,26 @@
+# Build context hygiene: no secrets, VCS data, caches or local state in images.
+.git
+.github
+.claude
+.env
+.env.*
+!.env.example
+.dev
+.localdata
+.venv
+**/__pycache__
+**/*.pyc
+.mypy_cache
+.ruff_cache
+.pytest_cache
+.import_linter_cache
+htmlcov
+dump.rdb
+tests
+docs
+infra/terraform
+apps/web/node_modules
+apps/web/.next
+apps/web/test-results
+apps/web/playwright-report
+apps/web/tsconfig.tsbuildinfo

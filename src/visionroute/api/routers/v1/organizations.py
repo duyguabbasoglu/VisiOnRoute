@@ -174,6 +174,7 @@ def _identity(db: TenantSession, settings: Settings, cipher: FieldCipher | None)
     return IdentityService(
         db,
         settings.refresh_token_ttl_seconds,
+        refresh_reuse_grace_seconds=settings.refresh_reuse_grace_seconds,
         mail=MailService(db, cipher),
         invitation_ttl_days=settings.invitation_ttl_days,
     )

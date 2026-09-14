@@ -8,7 +8,7 @@ DB_URL     ?= postgresql+asyncpg://visionroute:visionroute@localhost:$(PG_PORT)/
 
 .PHONY: bootstrap dev api web worker scheduler db-up db-down db-init migrate \
         fmt fmt-check lint type test test-unit test-integration security check \
-        seed-demo clean
+        seed-demo clean e2e
 
 bootstrap:  ## Install all dependencies + git hooks
 	poetry install
@@ -62,8 +62,14 @@ worker:
 scheduler:
 	poetry run visionroute scheduler run
 
-seed-demo:  ## Demo verisi (yalnızca yerel/demo ortamı, data_origin=synthetic)
-	poetry run visionroute demo seed
+seed-demo:  ## Sentetik demo telemetrisi (data_origin=synthetic). Gerekli: API_KEY, SOURCE_KEY; isteğe bağlı: VEHICLE, BASE_URL
+	@test -n "$(API_KEY)" -a -n "$(SOURCE_KEY)" || { \
+		echo "Kullanım: make seed-demo API_KEY=vrk_... SOURCE_KEY=telematik-1 [VEHICLE=34ABC123] [BASE_URL=http://localhost:8000]"; \
+		echo "API anahtarı ve veri kaynağı panelde Entegrasyonlar sayfasından oluşturulur."; exit 1; }
+	poetry run visionroute simulate telemetry \
+		--base-url "$(or $(BASE_URL),http://localhost:8000)" \
+		--api-key "$(API_KEY)" --source-key "$(SOURCE_KEY)" \
+		--vehicle-external-id "$(or $(VEHICLE),34ABC123)"
 
 ## ---- Quality gate ----------------------------------------------------------
 fmt:
@@ -87,6 +93,9 @@ test-integration:
 
 test:
 	poetry run pytest -q
+
+e2e:  ## Uçtan uca testler (Playwright; PostgreSQL :5433 ve `pnpm exec playwright install chromium` gerekir)
+	cd apps/web && pnpm e2e
 
 security:
 	poetry run bandit -c pyproject.toml -r src -q
