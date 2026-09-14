@@ -80,3 +80,17 @@ def test_jwt_keys_from_inline_pem_with_escaped_newlines() -> None:
         user_id=user_id, organization_id=None, role=None, is_platform_admin=False
     )
     assert service.verify_access_token(token).user_id == user_id
+
+
+def test_production_rejects_local_redis_and_cors_defaults() -> None:
+    defaults = _settings(environment=Environment.PRODUCTION).validate_for_runtime()
+    assert any("Redis adresi" in problem for problem in defaults)
+    assert any("CORS kökenleri localhost" in problem for problem in defaults)
+
+    configured = _settings(
+        environment=Environment.PRODUCTION,
+        redis_url="redis://cache.internal:6379/0",
+        public_app_url="https://filo.ornek.example",
+        cors_origins=["https://filo.ornek.example"],
+    ).validate_for_runtime()
+    assert not any("Redis" in problem or "CORS" in problem for problem in configured)

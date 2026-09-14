@@ -244,6 +244,12 @@ class Settings(BaseSettings):
                 problems.append("Metrik erişim anahtarı en az 32 karakter olmalıdır.")
             if self.storage_backend != "s3":
                 problems.append("Üretim benzeri ortamda nesne depolama arka ucu 's3' olmalıdır.")
+            if any(host in self.redis_url for host in ("localhost", "127.0.0.1")):
+                problems.append("Üretim benzeri ortamda Redis adresi localhost olamaz.")
+            if any("localhost" in origin or "127.0.0.1" in origin for origin in self.cors_origins):
+                problems.append("Üretim benzeri ortamda CORS kökenleri localhost içeremez.")
+            if self.public_app_url not in self.cors_origins:
+                problems.append("public_app_url CORS kökenleri arasında bulunmalıdır.")
             if self.rate_limit_backend != "redis":
                 problems.append("Üretim benzeri ortamda hız sınırlama arka ucu 'redis' olmalıdır.")
             if not self.public_app_url.startswith("https://"):
