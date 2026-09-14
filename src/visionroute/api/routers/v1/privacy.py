@@ -18,6 +18,7 @@ from visionroute.api.deps import (
     require_tenant_id,
 )
 from visionroute.api.errors import UnauthorizedError
+from visionroute.api.ratelimit import enforce_rate_limit
 from visionroute.application.context import RequestContext
 from visionroute.application.privacy.service import PrivacyService, RetentionView
 from visionroute.config.settings import Settings
@@ -158,6 +159,14 @@ async def create_privacy_request(
     settings: AppSettings,
 ) -> PrivacyRequestOut:
     """KVKK kapsamında sürücü veya kullanıcı için dışa aktarma ya da silme talebi oluşturur."""
+    # Each request becomes a worker job (archives, erasure); bound the load.
+    await enforce_rate_limit(
+        request,
+        scope="privacy-request:org",
+        identity=str(require_tenant_id(ctx)),
+        limit=50,
+        window_seconds=3600,
+    )
     service = _service(request, db, settings)
     item = await service.create_request(
         ctx,
@@ -240,6 +249,13 @@ async def request_my_export(
     request: Request, db: TenantSession, ctx: CurrentContext, settings: AppSettings
 ) -> PrivacyRequestOut:
     """Kullanıcının bu organizasyondaki kişisel verilerinin dışa aktarımını başlatır."""
+    await enforce_rate_limit(
+        request,
+        scope="privacy-export:user",
+        identity=str(_user_id(ctx)),
+        limit=3,
+        window_seconds=86_400,
+    )
     item = await _service(request, db, settings).create_request(
         ctx,
         require_tenant_id(ctx),

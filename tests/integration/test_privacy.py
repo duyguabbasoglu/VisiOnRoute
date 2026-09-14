@@ -347,3 +347,15 @@ async def test_failures_retry_then_fail(client: TestClient, test_settings: Setti
         if r["id"] == request_id
     )
     assert item["error_code"] == "StorageError" and item["download_available"] is False
+
+
+async def test_self_service_export_is_rate_limited(
+    client: TestClient, test_settings: Settings
+) -> None:
+    owner, _, _ = await _org_with_event(client, test_settings, "kvkk-sinir")
+    statuses = [
+        client.post("/api/v1/privacy/me/export", headers=auth_headers(owner)).status_code
+        for _ in range(4)
+    ]
+    # One job at a time (409 while pending); a small daily budget per user (429).
+    assert statuses == [201, 409, 409, 429]
