@@ -54,6 +54,9 @@ class InMemoryRateLimiter:
         estimate = sliding_estimate(count, previous, now_seconds=now, window_seconds=window_seconds)
         return decide(estimate, limit=limit, now_seconds=now, window_seconds=window_seconds)
 
+    async def healthy(self) -> bool:
+        return True
+
     async def close(self) -> None:
         return None
 
@@ -85,6 +88,12 @@ class RedisRateLimiter:
             int(count), int(previous or 0), now_seconds=now, window_seconds=window_seconds
         )
         return decide(estimate, limit=limit, now_seconds=now, window_seconds=window_seconds)
+
+    async def healthy(self) -> bool:
+        try:
+            return bool(await self._redis.ping())
+        except (RedisError, OSError):
+            return False
 
     async def close(self) -> None:
         await self._redis.aclose()

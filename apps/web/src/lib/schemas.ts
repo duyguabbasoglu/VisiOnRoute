@@ -286,3 +286,33 @@ export const PRIVACY_RESULT_LABELS: Record<string, string> = {
   emails_deleted: "Silinen e-posta kaydı",
   invitations_deleted: "Silinen davet",
 };
+
+export const subscriptionSchema = z.object({
+  plan_key: z.string(),
+  plan_name_tr: z.string(),
+  status: z.string(),
+  status_label: z.string(),
+  vehicle_limit: z.number(),
+  user_limit: z.number(),
+  retention_days: z.number(),
+  trial_ends_at: z.string().nullable(),
+  billing_mode: z.string(),
+  trial_days_left: z.number().nullable(),
+  growth_blocked: z.boolean(),
+  usage: z.record(z.number()),
+});
+export type Subscription = z.infer<typeof subscriptionSchema>;
+
+export const usageSchema = z.object({
+  period_days: z.number(),
+  current: z.record(z.number()),
+  metrics: z.array(
+    z.object({
+      metric: z.string(),
+      label: z.string(),
+      unit: z.string(),
+      points: z.array(z.object({ day: z.string(), value: z.number() })),
+    }),
+  ),
+});
+export type Usage = z.infer<typeof usageSchema>;

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, date, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import Select, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from visionroute.api.deps import (
     PlatformSession,
@@ -16,11 +17,13 @@ from visionroute.api.deps import (
     require_permission,
     require_platform_admin,
 )
-from visionroute.api.errors import ForbiddenError
+from visionroute.api.errors import ForbiddenError, NotFoundError
 from visionroute.application.audit import record_audit
 from visionroute.application.context import RequestContext
 from visionroute.application.saas.service import SubscriptionService
+from visionroute.application.saas.usage import current_usage, usage_series
 from visionroute.domain.permissions import Permission
+from visionroute.domain.usage import SUBSCRIPTION_STATUS_LABELS_TR, USAGE_METRICS
 from visionroute.infrastructure.db.models.identity import Membership, Organization
 from visionroute.infrastructure.db.models.ingestion import IngestEvent
 from visionroute.infrastructure.db.models.mail import EmailMessage
@@ -38,10 +41,50 @@ class EntitlementsOut(BaseModel):
     plan_key: str
     plan_name_tr: str
     status: str
+    status_label: str
     vehicle_limit: int
     user_limit: int
     retention_days: int
     trial_ends_at: datetime | None
+    billing_mode: str
+    trial_days_left: int | None
+    growth_blocked: bool
+    usage: dict[str, int]
+
+
+class UsagePoint(BaseModel):
+    day: date
+    value: float
+
+
+class UsageMetricOut(BaseModel):
+    metric: str
+    label: str
+    unit: str
+    points: list[UsagePoint]
+
+
+class UsageOut(BaseModel):
+    period_days: int
+    current: dict[str, int]
+    metrics: list[UsageMetricOut]
+
+
+async def _usage_out(db: AsyncSession, organization_id: uuid.UUID, days: int) -> UsageOut:
+    series = await usage_series(db, organization_id, days=days, today=datetime.now(UTC).date())
+    return UsageOut(
+        period_days=days,
+        current=await current_usage(db, organization_id),
+        metrics=[
+            UsageMetricOut(
+                metric=metric,
+                label=label,
+                unit=unit,
+                points=[UsagePoint(day=day, value=value) for day, value in series[metric]],
+            )
+            for metric, (label, unit) in USAGE_METRICS.items()
+        ],
+    )
 
 
 @router.get("/subscription", response_model=EntitlementsOut)
@@ -52,7 +95,23 @@ async def my_subscription(
     if ctx.organization_id is None:  # pragma: no cover
         raise ForbiddenError
     entitlements = await SubscriptionService(db).get_entitlements(ctx.organization_id)
-    return EntitlementsOut(**entitlements.__dict__)
+    return EntitlementsOut(
+        **entitlements.__dict__,
+        status_label=SUBSCRIPTION_STATUS_LABELS_TR.get(entitlements.status, entitlements.status),
+        usage=await current_usage(db, ctx.organization_id),
+    )
+
+
+@router.get("/subscription/usage", response_model=UsageOut)
+async def my_usage(
+    db: TenantSession,
+    ctx: Annotated[RequestContext, require_permission(Permission.SUBSCRIPTION_READ)],
+    days: Annotated[int, Query(ge=1, le=366)] = 30,
+) -> UsageOut:
+    """Günlük kullanım ölçümleri (faturalama manuel yapılır)."""
+    if ctx.organization_id is None:  # pragma: no cover
+        raise ForbiddenError
+    return await _usage_out(db, ctx.organization_id, days)
 
 
 # --------------------------------------------------------- platform admin
@@ -109,6 +168,18 @@ async def platform_list_organizations(
         )
         for org, member_count, subscription in rows.all()
     ]
+
+
+@router.get("/platform/organizations/{organization_id}/usage", response_model=UsageOut)
+async def platform_organization_usage(
+    organization_id: uuid.UUID,
+    db: PlatformSession,
+    ctx: Annotated[RequestContext, Depends(require_platform_admin)],
+    days: Annotated[int, Query(ge=1, le=366)] = 30,
+) -> UsageOut:
+    if await db.get(Organization, organization_id) is None:
+        raise NotFoundError("Organizasyon bulunamadı.")
+    return await _usage_out(db, organization_id, days)
 
 
 @router.post("/platform/organizations/{organization_id}/plan", response_model=PlatformOrgOut)

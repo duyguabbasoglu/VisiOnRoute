@@ -15,6 +15,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from visionroute.config.settings import Settings
 from visionroute.observability.logging import get_logger
+from visionroute.observability.metrics import observe_http_request
 
 logger = get_logger("visionroute.api.access")
 
@@ -137,7 +138,11 @@ def register_middleware(app: FastAPI, settings: Settings) -> None:
 
         started = time.perf_counter()
         response = await call_next(request)
-        elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+        elapsed = time.perf_counter() - started
+        elapsed_ms = round(elapsed * 1000, 2)
+        # Route templates keep label cardinality bounded (never raw paths).
+        route = getattr(request.scope.get("route"), "path", None) or "unmatched"
+        observe_http_request(request.method, route, response.status_code, elapsed)
 
         response.headers["X-Request-ID"] = request_id
         for header, value in _SECURITY_HEADERS.items():

@@ -21,6 +21,7 @@ const NAV: { href: string; label: string; permission: Permission | null }[] = [
   { href: "/panel/entegrasyonlar", label: "Entegrasyonlar", permission: "integrations.read" },
   { href: "/panel/ayarlar", label: "Organizasyon", permission: "org.read" },
   { href: "/panel/gizlilik", label: "Gizlilik (KVKK)", permission: "org.retention.manage" },
+  { href: "/panel/abonelik", label: "Abonelik", permission: "subscription.read" },
   { href: "/panel/hesap", label: "Hesabım", permission: null },
 ];
 
