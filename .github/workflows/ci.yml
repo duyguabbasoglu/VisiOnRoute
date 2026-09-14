@@ -43,11 +43,14 @@ jobs:
         run: poetry run lint-imports
       - name: Type check
         run: poetry run mypy
+      - name: Install Unicode fonts (Turkish PDF reports)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends fonts-dejavu-core
       - name: Unit tests
         run: poetry run pytest tests/unit -q
       - name: Integration & security tests
         env:
           VISIONROUTE_DATABASE_URL: postgresql+asyncpg://visionroute:visionroute@localhost:5433/visionroute
+          VISIONROUTE_TEST_PDF_FONT_DIR: /usr/share/fonts/truetype/dejavu
         run: poetry run pytest tests/integration tests/security -q
       - name: Start MinIO (S3 contract)
         # Pinned release binary verified against MinIO's published SHA-256.

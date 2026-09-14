@@ -17,6 +17,8 @@ from typing import Literal
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from visionroute.config.fonts import find_unicode_font_dir
+
 
 class Environment(StrEnum):
     LOCAL = "local"
@@ -109,6 +111,8 @@ class Settings(BaseSettings):
     s3_secret_access_key: SecretStr | None = None
     s3_region: str = "eu-central-1"
     signed_url_ttl_seconds: int = Field(default=300, le=3600)
+    # Directory with DejaVuSans.ttf / DejaVuSans-Bold.ttf for Turkish PDF text.
+    pdf_font_dir: Path | None = None
 
     # --- AI assistance (disabled by default; see ADR-0008) ---
     ai_assist_enabled: bool = False
@@ -181,6 +185,11 @@ class Settings(BaseSettings):
                 problems.append("Üretim benzeri ortamda SMTP sunucusu localhost olamaz.")
             if self.smtp_username and self.smtp_password is None:
                 problems.append("SMTP kullanıcı adı verilmiş ancak parola eksik.")
+            if find_unicode_font_dir(self.pdf_font_dir) is None:
+                problems.append(
+                    "PDF raporları için Unicode yazı tipi (DejaVu Sans) bulunamadı; "
+                    "VISIONROUTE_PDF_FONT_DIR ayarlanmalı."
+                )
             if self.storage_backend != "s3":
                 problems.append("Üretim benzeri ortamda nesne depolama arka ucu 's3' olmalıdır.")
             if self.rate_limit_backend != "redis":

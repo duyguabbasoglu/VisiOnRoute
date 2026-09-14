@@ -2,20 +2,27 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import uuid
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from visionroute.api.deps import TenantSession, require_permission
+from visionroute.api.deps import TenantSession, require_permission, revalidate_access
 from visionroute.api.errors import ForbiddenError, NotFoundError
 from visionroute.application.context import RequestContext
 from visionroute.domain.permissions import Permission
 from visionroute.domain.telemetry_rules import STALE_FEED_AFTER
 from visionroute.infrastructure.db.models.telemetry import TelemetryPoint, Trip
+from visionroute.infrastructure.db.tenancy import set_tenant
+from visionroute.infrastructure.realtime import LiveEventHub
 
 router = APIRouter(tags=["operations"])
 
@@ -58,16 +65,11 @@ class TrailPoint(BaseModel):
     quality: float
 
 
-@router.get("/operations/live", response_model=list[LiveVehicle])
-async def live_positions(
-    db: TenantSession,
-    ctx: Annotated[RequestContext, require_permission(Permission.TRIPS_READ)],
-) -> list[LiveVehicle]:
-    """Aktif seferlerin son bilinen konumları (canlı harita)."""
+async def _live_positions(db: AsyncSession, tenant_id: uuid.UUID) -> list[LiveVehicle]:
     now = datetime.now(UTC)
     result = await db.execute(
         select(Trip)
-        .where(Trip.organization_id == _tenant(ctx), Trip.status == "active")
+        .where(Trip.organization_id == tenant_id, Trip.status == "active")
         .order_by(Trip.last_point_at.desc().nullslast())
     )
     live: list[LiveVehicle] = []
@@ -86,6 +88,93 @@ async def live_positions(
             )
         )
     return live
+
+
+@router.get("/operations/live", response_model=list[LiveVehicle])
+async def live_positions(
+    db: TenantSession,
+    ctx: Annotated[RequestContext, require_permission(Permission.TRIPS_READ)],
+) -> list[LiveVehicle]:
+    """Aktif seferlerin son bilinen konumları (canlı harita)."""
+    return await _live_positions(db, _tenant(ctx))
+
+
+_KEEPALIVE_SECONDS = 15.0
+_FALLBACK_REFRESH_SECONDS = 30.0
+_REVALIDATE_SECONDS = 60.0
+_COALESCE_SECONDS = 0.5
+
+
+@router.get("/operations/stream")
+async def live_stream(
+    request: Request,
+    ctx: Annotated[RequestContext, require_permission(Permission.TRIPS_READ)],
+    max_seconds: Annotated[int, Query(ge=1, le=600)] = 300,
+) -> StreamingResponse:
+    """Canlı konum ve yeni olay bildirimleri (Server-Sent Events).
+
+    The stream holds no database connection while idle: each update opens a
+    short tenant-scoped session. It ends after ``max_seconds`` (clients
+    reconnect with a fresh token) or as soon as access is revoked.
+    """
+    tenant_id = _tenant(ctx)
+    factory = request.app.state.db_session_factory
+    hub: LiveEventHub | None = getattr(request.app.state, "live_hub", None)
+
+    async def snapshot() -> str:
+        async with factory() as session:
+            await set_tenant(session, tenant_id)
+            items = await _live_positions(session, tenant_id)
+        return json.dumps([item.model_dump(mode="json") for item in items], ensure_ascii=False)
+
+    async def events() -> AsyncIterator[str]:
+        loop = asyncio.get_running_loop()
+        queue = hub.subscribe(tenant_id) if hub is not None else None
+        deadline = loop.time() + max_seconds
+        next_revalidation = loop.time() + _REVALIDATE_SECONDS
+        last_refresh = loop.time()
+        reason = "timeout"
+        try:
+            yield "retry: 5000\n\n"
+            yield f"event: live\ndata: {await snapshot()}\n\n"
+            while True:
+                remaining = deadline - loop.time()
+                if remaining <= 0 or await request.is_disconnected():
+                    break
+                kinds: set[str] = set()
+                try:
+                    if queue is None:
+                        raise TimeoutError
+                    kinds.add(
+                        await asyncio.wait_for(queue.get(), min(_KEEPALIVE_SECONDS, remaining))
+                    )
+                    await asyncio.sleep(_COALESCE_SECONDS)
+                    while not queue.empty():
+                        kinds.add(queue.get_nowait())
+                except TimeoutError:
+                    pass
+                if loop.time() >= next_revalidation:
+                    next_revalidation = loop.time() + _REVALIDATE_SECONDS
+                    if not await revalidate_access(request):
+                        reason = "unauthorized"
+                        break
+                if "safety_event" in kinds:
+                    yield "event: safety\ndata: {}\n\n"
+                if kinds or loop.time() - last_refresh >= _FALLBACK_REFRESH_SECONDS:
+                    last_refresh = loop.time()
+                    yield f"event: live\ndata: {await snapshot()}\n\n"
+                else:
+                    yield ": keepalive\n\n"
+            yield f'event: end\ndata: {{"reason": "{reason}"}}\n\n'
+        finally:
+            if queue is not None and hub is not None:
+                hub.unsubscribe(tenant_id, queue)
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/trips", response_model=list[TripOut])

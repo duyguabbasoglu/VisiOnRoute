@@ -11,6 +11,7 @@ from fastapi import (
     APIRouter,
     Depends,
     Query,
+    Request,
     Response,
     status,
 )
@@ -432,10 +433,14 @@ async def coaching_csv(
 
 @router.get("/reports/executive.pdf")
 async def executive_pdf(
+    request: Request,
     db: TenantSession,
     ctx: Annotated[RequestContext, require_permission(Permission.REPORTS_READ)],
 ) -> Response:
-    content = await ReportService(db).executive_pdf(_tenant(ctx))
+    settings: Settings = request.app.state.settings
+    content = await ReportService(db, pdf_font_dir=settings.pdf_font_dir).executive_pdf(
+        _tenant(ctx)
+    )
     await record_audit(
         db, ctx, action="report.generated", resource_type="report", data={"kind": "pdf"}
     )

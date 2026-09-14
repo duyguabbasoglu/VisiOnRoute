@@ -16,6 +16,7 @@ from visionroute.api.routers.health import router as health_router
 from visionroute.config.settings import Settings, get_settings
 from visionroute.infrastructure.db.engine import build_engine, build_session_factory
 from visionroute.infrastructure.ratelimit import build_rate_limiter
+from visionroute.infrastructure.realtime import LiveEventHub
 from visionroute.infrastructure.security.crypto import FieldEncryptionError, build_field_cipher
 from visionroute.infrastructure.security.tokens import JwtService, TokenError
 from visionroute.infrastructure.storage import build_object_storage
@@ -48,6 +49,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.rate_limiter = build_rate_limiter(settings)
         # Object storage clients are lazy: no network I/O until first use.
         app.state.object_storage = build_object_storage(settings)
+        app.state.live_hub = LiveEventHub(settings.database_url)
+        await app.state.live_hub.start()
         try:
             app.state.field_cipher = build_field_cipher(settings)
         except FieldEncryptionError:
@@ -66,6 +69,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            await app.state.live_hub.close()
             await app.state.rate_limiter.close()
             await app.state.db_engine.dispose()
             logger.info("api_stopped")

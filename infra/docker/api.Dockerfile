@@ -8,8 +8,11 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libpq5 curl \
+    && apt-get install -y --no-install-recommends libpq5 curl fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
+
+# Unicode font for Turkish PDF reports (see visionroute.config.fonts).
+ENV VISIONROUTE_PDF_FONT_DIR=/usr/share/fonts/truetype/dejavu
 
 FROM base AS build
 RUN pip install "poetry==${POETRY_VERSION}"

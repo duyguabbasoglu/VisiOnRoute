@@ -173,3 +173,9 @@ export async function apiDownload(path: string, fallbackFilename: string): Promi
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 }
+
+/** Open a long-lived authenticated response (server-sent events). The access
+ * token travels in the Authorization header, never in the URL. */
+export function openAuthorizedStream(path: string, signal: AbortSignal): Promise<Response> {
+  return authorizedResponse(path, "GET", undefined, true, signal);
+}

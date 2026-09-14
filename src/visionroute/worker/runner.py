@@ -34,6 +34,7 @@ from visionroute.infrastructure.db.models.ingestion import IngestEvent
 from visionroute.infrastructure.db.models.system import OutboxEvent
 from visionroute.infrastructure.db.tenancy import set_rls_bypass
 from visionroute.infrastructure.mail import build_mail_sender
+from visionroute.infrastructure.realtime import notify_live
 from visionroute.infrastructure.security.crypto import build_field_cipher
 from visionroute.infrastructure.storage import build_object_storage
 from visionroute.observability.logging import get_logger
@@ -86,6 +87,7 @@ class Worker:
                 try:
                     async with session.begin_nested():
                         await self._dispatch(session, event)
+                        await self._notify_live(session, event)
                 except Exception as exc:
                     # The savepoint rollback expired the event; reload it
                     # before recording the failure.
@@ -141,6 +143,20 @@ class Worker:
             await self._handle_safety_event_created(session, event)
         # Unknown types are acknowledged as done (no-op) so they don't clog
         # the queue.
+
+    async def _notify_live(self, session: AsyncSession, event: OutboxEvent) -> None:
+        """Signal live-operation streams; delivered by PostgreSQL on commit."""
+        if event.event_type == "safety.event_created":
+            organization_id = event.payload.get("organization_id")
+            if organization_id is not None:
+                await notify_live(session, uuid.UUID(str(organization_id)), "safety_event")
+        elif event.event_type == "ingest.event_accepted":
+            ingest_event_id = event.payload.get("ingest_event_id")
+            ingest_event = (
+                await session.get(IngestEvent, ingest_event_id) if ingest_event_id else None
+            )
+            if ingest_event is not None and ingest_event.status == "processed":
+                await notify_live(session, ingest_event.organization_id, "positions")
 
     async def _handle_safety_event_created(self, session: AsyncSession, event: OutboxEvent) -> None:
         payload = event.payload

@@ -1,27 +1,66 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/api";
-import type { LiveVehicle } from "@/lib/types";
-import { Card, EmptyState, PageHeader, formatDateTime } from "@/components/ui";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { z } from "zod";
+import { Badge, Card, EmptyState, ErrorState, PageHeader, formatDateTime } from "@/components/ui";
+import { apiFetch, errorMessage } from "@/lib/api";
+import { liveVehicleSchema } from "@/lib/schemas";
+import { subscribeToStream, type StreamStatus } from "@/lib/stream";
+
+const liveListSchema = z.array(liveVehicleSchema);
+const FALLBACK_REFRESH_MS = 10_000;
+
+const STATUS_BADGE: Record<StreamStatus, { label: string; tone: "success" | "warning" | "info" }> = {
+  live: { label: "Anlık bağlantı açık", tone: "success" },
+  connecting: { label: "Bağlanıyor…", tone: "info" },
+  fallback: { label: "Anlık bağlantı yok — 10 sn'de bir yenileniyor", tone: "warning" },
+};
 
 export default function LiveOpsPage() {
+  const queryClient = useQueryClient();
+  const [streamStatus, setStreamStatus] = useState<StreamStatus>("connecting");
+
   const query = useQuery({
     queryKey: ["live"],
-    queryFn: () => apiFetch<LiveVehicle[]>("/api/v1/operations/live"),
-    refetchInterval: 10_000, // near-real-time refresh
+    queryFn: () => apiFetch("/api/v1/operations/live", { schema: liveListSchema }),
+    // Polling only while the push stream is not delivering updates.
+    refetchInterval: streamStatus === "live" ? false : FALLBACK_REFRESH_MS,
   });
 
+  useEffect(
+    () =>
+      subscribeToStream("/api/v1/operations/stream", {
+        onStatus: setStreamStatus,
+        onEvent: (event, data) => {
+          if (event === "live") {
+            try {
+              const parsed = liveListSchema.safeParse(JSON.parse(data));
+              if (parsed.success) queryClient.setQueryData(["live"], parsed.data);
+            } catch {
+              // Malformed payloads are ignored; the next update replaces them.
+            }
+          } else if (event === "safety") {
+            void queryClient.invalidateQueries({ queryKey: ["safety-events"] });
+          }
+        },
+      }),
+    [queryClient],
+  );
+
   const vehicles = query.data ?? [];
+  const status = STATUS_BADGE[streamStatus];
 
   return (
     <div>
-      <PageHeader
-        title="Canlı Operasyon"
-        description="Aktif seferlerin son bilinen konumu (10 sn'de bir yenilenir)."
-      />
+      <PageHeader title="Canlı Operasyon" description="Aktif seferlerin son bilinen konumu." />
+      <div className="mb-4" aria-live="polite">
+        <Badge tone={status.tone}>{status.label}</Badge>
+      </div>
       {query.isLoading ? (
         <p className="text-sm text-slate-500">Yükleniyor…</p>
+      ) : query.isError ? (
+        <ErrorState message={errorMessage(query.error, "Canlı veriler yüklenemedi.")} />
       ) : vehicles.length === 0 ? (
         <EmptyState message="Şu anda aktif sefer yok. Telemetri gelmeye başladığında araçlar burada görünür." />
       ) : (
@@ -29,17 +68,11 @@ export default function LiveOpsPage() {
           {vehicles.map((v) => (
             <Card key={v.trip_id}>
               <div className="flex items-center justify-between">
-                <span className="font-mono text-sm text-ink-900">
-                  {v.vehicle_id.slice(0, 8)}
-                </span>
+                <span className="font-mono text-sm text-ink-900">{v.vehicle_id.slice(0, 8)}</span>
                 {v.is_stale ? (
-                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
-                    Besleme gecikmeli
-                  </span>
+                  <Badge tone="warning">Besleme gecikmeli</Badge>
                 ) : (
-                  <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
-                    Canlı
-                  </span>
+                  <Badge tone="success">Canlı</Badge>
                 )}
               </div>
               <dl className="mt-3 space-y-1 text-sm">

@@ -112,6 +112,11 @@ def test_settings(test_database_url: str, jwt_keys: tuple[Path, Path]) -> Settin
         field_encryption_primary_key_id="test-k1",
         mail_backend="memory",
         storage_backend="local",
+        pdf_font_dir=(
+            Path(os.environ["VISIONROUTE_TEST_PDF_FONT_DIR"])
+            if os.environ.get("VISIONROUTE_TEST_PDF_FONT_DIR")
+            else None
+        ),
         local_storage_dir=Path(tempfile.mkdtemp(prefix="vr-objects-")),
         local_storage_signing_key="test-local-storage-signing-key",
         public_api_url="http://testserver",
