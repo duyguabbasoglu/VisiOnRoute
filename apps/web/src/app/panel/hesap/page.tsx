@@ -1,11 +1,19 @@
 "use client";
 
 import QRCode from "qrcode";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { Alert, Badge, Button, Card, PageHeader, TextField } from "@/components/ui";
+import { z } from "zod";
+import { Alert, Badge, Button, Card, PageHeader, TextField, formatDateTime } from "@/components/ui";
 import { apiFetch, errorMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { messageSchema, mfaSetupSchema, recoveryCodesSchema } from "@/lib/schemas";
+import {
+  messageSchema,
+  mfaSetupSchema,
+  privacyRequestSchema,
+  recoveryCodesSchema,
+  signedLinkSchema,
+} from "@/lib/schemas";
 
 type Feedback = { kind: "success" | "error" | "info"; text: string } | null;
 
@@ -70,6 +78,8 @@ export default function AccountPage() {
       </Card>
 
       <MfaSection mfaEnabled={user.mfa_enabled} onChanged={refreshUser} />
+
+      {user.organization_id && <PersonalDataSection />}
 
       <Card>
         <h2 className="mb-2 text-sm font-semibold text-ink-900">Oturum</h2>
@@ -356,6 +366,67 @@ function MfaSection({
         <Alert kind={feedback.kind} className="mt-4">
           {feedback.text}
         </Alert>
+      )}
+    </Card>
+  );
+}
+
+function PersonalDataSection() {
+  const queryClient = useQueryClient();
+  const [feedback, setFeedback] = useState<Feedback>(null);
+  const requests = useQuery({
+    queryKey: ["my-privacy-requests"],
+    queryFn: () => apiFetch("/api/v1/privacy/me/requests", { schema: z.array(privacyRequestSchema) }),
+    refetchInterval: (query) =>
+      query.state.data?.some((r) => r.status === "pending" || r.status === "processing") ? 5000 : false,
+  });
+  const exportData = useMutation({
+    mutationFn: () => apiFetch("/api/v1/privacy/me/export", { method: "POST", schema: privacyRequestSchema }),
+    onSuccess: () => {
+      setFeedback({ kind: "success", text: "Talebiniz alındı. Dosya hazır olduğunda e-posta ile bilgilendirileceksiniz." });
+      void queryClient.invalidateQueries({ queryKey: ["my-privacy-requests"] });
+    },
+    onError: (err) => setFeedback({ kind: "error", text: errorMessage(err, "Talep oluşturulamadı.") }),
+  });
+  const download = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/api/v1/privacy/me/requests/${id}/download`, { schema: signedLinkSchema }),
+    onSuccess: ({ url }) => window.open(url, "_blank", "noopener,noreferrer"),
+    onError: (err) => setFeedback({ kind: "error", text: errorMessage(err, "İndirme bağlantısı alınamadı.") }),
+  });
+  const active = requests.data?.some((r) => r.status === "pending" || r.status === "processing") ?? false;
+
+  return (
+    <Card className="mb-6">
+      <h2 className="mb-2 text-sm font-semibold text-ink-900">Kişisel verilerim (KVKK)</h2>
+      <p className="mb-3 text-sm text-slate-600">
+        Bu organizasyonda sizinle ilişkili kişisel verilerin bir kopyasını (JSON/CSV) indirebilirsiniz. Dosya 7 gün
+        boyunca saklanır. Verilerinizin silinmesi için organizasyon yöneticinize başvurun.
+      </p>
+      <Button variant="secondary" loading={exportData.isPending} disabled={active} onClick={() => exportData.mutate()}>
+        {active ? "Talebiniz işleniyor" : "Verilerimin kopyasını iste"}
+      </Button>
+      {feedback && (
+        <Alert kind={feedback.kind} className="mt-3">
+          {feedback.text}
+        </Alert>
+      )}
+      {requests.data && requests.data.length > 0 && (
+        <ul className="mt-4 space-y-2 text-sm">
+          {requests.data.slice(0, 5).map((r) => (
+            <li key={r.id} className="flex flex-wrap items-center gap-2">
+              <span>{formatDateTime(r.created_at)}</span>
+              <Badge tone={r.status === "completed" ? "success" : r.status === "failed" ? "danger" : "info"}>
+                {r.status_label}
+              </Badge>
+              {r.download_available && (
+                <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => download.mutate(r.id)}>
+                  İndir
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
       )}
     </Card>
   );

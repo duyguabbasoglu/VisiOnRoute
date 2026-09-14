@@ -102,11 +102,14 @@ class Driver(IdMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="active", server_default="active"
     )
+    # Set by KVKK erasure: identifiers are pseudonymized, the row is kept so
+    # historical safety statistics stay consistent.
+    erased_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         Index("ix_drivers_organization_id", "organization_id"),
         UniqueConstraint("organization_id", "external_id", name="uq_drivers_org_external"),
-        CheckConstraint("status IN ('active','inactive')", name="status_valid"),
+        CheckConstraint("status IN ('active','inactive','erased')", name="status_valid"),
     )
 
 

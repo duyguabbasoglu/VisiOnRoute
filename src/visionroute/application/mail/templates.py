@@ -22,7 +22,14 @@ _TZ = ZoneInfo("Europe/Istanbul")
 _FOOTER = "Bu e-posta VISiOnRoute tarafından otomatik olarak gönderildi; lütfen yanıtlamayın."
 
 TEMPLATES = frozenset(
-    {"invitation", "password_reset", "email_verification", "security_notice", "coaching_assigned"}
+    {
+        "invitation",
+        "password_reset",
+        "email_verification",
+        "security_notice",
+        "coaching_assigned",
+        "privacy_export_ready",
+    }
 )
 
 SECURITY_EVENT_LABELS_TR: dict[str, str] = {
@@ -118,6 +125,24 @@ def _content(
                 else None
             ),
             note=("Sürücü ve olay ayrıntıları yalnızca panelde, yetkili kullanıcılara gösterilir."),
+        )
+    if template == "privacy_export_ready":
+        return _Content(
+            subject="Kişisel veri dışa aktarma dosyanız hazır",
+            title="Veri dışa aktarma hazır",
+            paragraphs=[
+                f"Merhaba {_require(context, 'full_name')},",
+                f"{_require(context, 'organization_name')} organizasyonundaki kişisel "
+                "verilerinizin dışa aktarma dosyası hazırlandı.",
+                f"Dosya {format_local(_require(context, 'expires_at'))} tarihine kadar panelden "
+                "indirilebilir; sonrasında otomatik olarak silinir.",
+            ],
+            action=(
+                ("Hesabıma git", f"{app_url.rstrip('/')}/panel/hesap") if with_secrets else None
+            ),
+            note=(
+                "Güvenliğiniz için dosya e-postaya eklenmez; indirmek için oturum açmanız gerekir."
+            ),
         )
     if template == "invitation":
         organization = _require(context, "organization_name")
