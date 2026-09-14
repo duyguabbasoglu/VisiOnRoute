@@ -316,3 +316,188 @@ export const usageSchema = z.object({
   ),
 });
 export type Usage = z.infer<typeof usageSchema>;
+
+export const paginationSchema = z.object({ total: z.number(), limit: z.number(), offset: z.number() });
+
+export const vehicleSchema = z.object({
+  id: z.string(),
+  external_id: z.string(),
+  plate: z.string().nullable(),
+  label: z.string().nullable(),
+  make: z.string().nullable(),
+  model: z.string().nullable(),
+  year: z.number().nullable(),
+  status: z.string(),
+  fleet_id: z.string().nullable(),
+  created_at: z.string(),
+});
+export const vehicleListSchema = z.object({ items: z.array(vehicleSchema), pagination: paginationSchema });
+export const driverListSchema = z.object({ items: z.array(driverSchema), pagination: paginationSchema });
+
+export const tripSchema = z.object({
+  id: z.string(),
+  vehicle_id: z.string(),
+  driver_id: z.string().nullable(),
+  status: z.string(),
+  started_at: z.string(),
+  ended_at: z.string().nullable(),
+  last_point_at: z.string().nullable(),
+  distance_km: z.number(),
+  point_count: z.number(),
+  max_speed_kph: z.number().nullable(),
+});
+
+export const assignmentSchema = z.object({
+  id: z.string(),
+  driver_id: z.string(),
+  vehicle_id: z.string(),
+  started_at: z.string(),
+  ended_at: z.string().nullable(),
+});
+
+export const dataSourceSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  source_key: z.string(),
+  kind: z.string(),
+  status: z.string(),
+  license: z.string().nullable(),
+  attribution: z.string().nullable(),
+  last_event_at: z.string().nullable(),
+  last_success_at: z.string().nullable(),
+  accepted_count: z.number(),
+  rejected_count: z.number(),
+  duplicate_count: z.number(),
+});
+
+export const apiClientSchema = z.object({ id: z.string(), name: z.string(), status: z.string(), created_at: z.string() });
+export const apiTokenSummarySchema = z.object({
+  id: z.string(),
+  prefix: z.string(),
+  scopes: z.array(z.string()),
+  expires_at: z.string().nullable(),
+  revoked_at: z.string().nullable(),
+  last_used_at: z.string().nullable(),
+  created_at: z.string(),
+});
+export const issuedApiTokenSchema = z.object({
+  id: z.string(),
+  prefix: z.string(),
+  scopes: z.array(z.string()),
+  expires_at: z.string().nullable(),
+  api_key: z.string(),
+});
+
+export const analyticsSummarySchema = z.object({
+  window_days: z.number(),
+  total_events: z.number(),
+  events_by_severity: z.record(z.number()),
+  total_distance_km: z.number(),
+  events_per_100km: z.number().nullable(),
+  confirmation_rate: z.number().nullable(),
+  data_note_tr: z.string(),
+});
+
+export const notificationSchema = z.object({
+  id: z.string(),
+  level: z.string(),
+  title_tr: z.string(),
+  body_tr: z.string(),
+  safety_event_id: z.string().nullable(),
+  read_at: z.string().nullable(),
+  created_at: z.string(),
+});
+export const notificationRuleSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  kind: z.string(),
+  min_severity: z.string(),
+  channels: z.array(z.string()),
+  active: z.boolean(),
+});
+export const webhookSchema = z.object({
+  id: z.string(),
+  url: z.string(),
+  description: z.string().nullable(),
+  active: z.boolean(),
+  last_success_at: z.string().nullable(),
+  last_failure_at: z.string().nullable(),
+  secret: z.string().nullable().optional(),
+});
+export type Webhook = z.infer<typeof webhookSchema>;
+export const webhookDeliverySchema = z.object({
+  id: z.string(),
+  event_type: z.string(),
+  status: z.string(),
+  attempts: z.number(),
+  response_status: z.number().nullable(),
+  last_error: z.string().nullable(),
+  created_at: z.string(),
+  next_attempt_at: z.string(),
+  delivered_at: z.string().nullable(),
+});
+
+export const platformOrgSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  slug: z.string(),
+  status: z.string(),
+  member_count: z.number(),
+  plan_key: z.string().nullable(),
+  subscription_status: z.string().nullable(),
+});
+export const platformPlanSchema = z.object({
+  key: z.string(),
+  name_tr: z.string(),
+  vehicle_limit: z.number(),
+  user_limit: z.number(),
+  retention_days: z.number(),
+  monthly_price_try: z.number().nullable(),
+});
+export const platformHealthSchema = z.object({
+  outbox_pending: z.number(),
+  outbox_dead_letter: z.number(),
+  ingest_quarantined: z.number(),
+  webhook_dead_letter: z.number(),
+  email_pending: z.number(),
+  email_dead_letter: z.number(),
+});
+
+export const safetyEventDetailSchema = safetyEventSchema.extend({
+  explanation: z.object({
+    ne_oldu: z.string(),
+    ne_zaman: z.string(),
+    nerede: z.object({ latitude: z.number(), longitude: z.number() }).nullable(),
+    hangi_veri: z.string(),
+    hangi_kural: z.string(),
+    esik: z.number().nullable(),
+    olculen_deger: z.number().nullable(),
+    guven_seviyesi: z.number(),
+    veri_kalitesi: z.number().nullable(),
+    inceleme_gerekli: z.boolean(),
+  }),
+  ruleset_version: z.number(),
+  severity_framework_version: z.number(),
+  evidence: z.array(
+    z.object({
+      id: z.string(),
+      kind: z.string(),
+      telemetry_window: z.record(z.unknown()).nullable(),
+      captured_at: z.string().nullable(),
+      status: z.enum(["pending_upload", "available", "rejected", "deleted"]),
+      content_type: z.string().nullable(),
+      size_bytes: z.number().nullable(),
+      redaction_status: z.enum(["not_applicable", "not_processed", "pending", "completed", "failed"]),
+    }),
+  ),
+  evidence_restricted: z.boolean(),
+  resolution: z.string().nullable(),
+  resolution_label: z.string().nullable(),
+  root_cause: z.string().nullable(),
+  reviewer_notes: z.string().nullable(),
+  reviewed_at: z.string().nullable(),
+  coaching_action: z
+    .object({ id: z.string(), status: z.string(), status_label: z.string(), due_at: z.string().nullable() })
+    .nullable(),
+});
+export const reviewResponseSchema = z.object({ coaching_action_id: z.string().nullable() }).passthrough();

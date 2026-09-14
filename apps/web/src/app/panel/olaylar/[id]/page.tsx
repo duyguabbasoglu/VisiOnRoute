@@ -21,7 +21,12 @@ import {
 import { ApiError, apiFetch, errorMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { RESOLUTIONS, coachingAssigneeSchema } from "@/lib/schemas";
+import {
+  RESOLUTIONS,
+  coachingAssigneeSchema,
+  reviewResponseSchema,
+  safetyEventDetailSchema,
+} from "@/lib/schemas";
 import type { SafetyEventDetail } from "@/lib/types";
 
 const DECISIONS = [
@@ -49,7 +54,7 @@ export default function EventDetailPage() {
 
   const query = useQuery({
     queryKey: ["safety-event", id],
-    queryFn: () => apiFetch<SafetyEventDetail>(`/api/v1/safety-events/${id}`),
+    queryFn: () => apiFetch(`/api/v1/safety-events/${id}`, { schema: safetyEventDetailSchema }),
   });
   const assignees = useQuery({
     queryKey: ["coaching", "assignees"],
@@ -59,7 +64,8 @@ export default function EventDetailPage() {
 
   const review = useMutation({
     mutationFn: () =>
-      apiFetch<{ coaching_action_id: string | null }>(`/api/v1/safety-events/${id}/review`, {
+      apiFetch(`/api/v1/safety-events/${id}/review`, {
+        schema: reviewResponseSchema,
         method: "POST",
         body: {
           decision,

@@ -1,39 +1,36 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/api";
-import { Card, EmptyState, PageHeader, formatDateTime } from "@/components/ui";
+import { z } from "zod";
+import { Badge, Card, EmptyState, ErrorState, LoadingState, PageHeader, formatDateTime } from "@/components/ui";
+import { apiFetch, errorMessage } from "@/lib/api";
+import { tripSchema, vehicleListSchema } from "@/lib/schemas";
 
-interface Trip {
-  id: string;
-  vehicle_id: string;
-  status: string;
-  started_at: string;
-  ended_at: string | null;
-  distance_km: number;
-  point_count: number;
-  max_speed_kph: number | null;
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  active: "Aktif",
-  completed: "Tamamlandı",
-  stale: "Bekliyor",
+const STATUS: Record<string, { label: string; tone: "success" | "neutral" | "warning" }> = {
+  active: { label: "Devam ediyor", tone: "success" },
+  completed: { label: "Tamamlandı", tone: "neutral" },
+  stale: { label: "Sinyal kesildi", tone: "warning" },
 };
 
 export default function TripsPage() {
-  const query = useQuery({
+  const trips = useQuery({
     queryKey: ["trips"],
-    queryFn: () => apiFetch<Trip[]>("/api/v1/trips?limit=100"),
+    queryFn: () => apiFetch("/api/v1/trips?limit=100", { schema: z.array(tripSchema) }),
   });
-  const trips = query.data ?? [];
+  const vehicles = useQuery({
+    queryKey: ["vehicles"],
+    queryFn: () => apiFetch("/api/v1/vehicles?limit=100", { schema: vehicleListSchema }),
+  });
+  const vehicleName = new Map((vehicles.data?.items ?? []).map((v) => [v.id, v.plate ?? v.external_id]));
 
   return (
     <div>
       <PageHeader title="Seferler" description="Araç seferleri ve mesafe özetleri." />
-      {query.isLoading ? (
-        <p className="text-sm text-slate-500">Yükleniyor…</p>
-      ) : trips.length === 0 ? (
+      {trips.isLoading ? (
+        <LoadingState />
+      ) : trips.isError ? (
+        <ErrorState message={errorMessage(trips.error, "Seferler yüklenemedi.")} onRetry={() => void trips.refetch()} />
+      ) : !trips.data?.length ? (
         <EmptyState message="Henüz sefer kaydı yok. Telemetri geldikçe seferler otomatik oluşturulur." />
       ) : (
         <Card className="overflow-x-auto p-0">
@@ -41,6 +38,7 @@ export default function TripsPage() {
             <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs text-slate-500">
               <tr>
                 <th className="px-4 py-2.5 font-medium">Başlangıç</th>
+                <th className="px-4 py-2.5 font-medium">Araç</th>
                 <th className="px-4 py-2.5 font-medium">Durum</th>
                 <th className="px-4 py-2.5 font-medium">Mesafe</th>
                 <th className="px-4 py-2.5 font-medium">Nokta</th>
@@ -48,19 +46,23 @@ export default function TripsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {trips.map((t) => (
-                <tr key={t.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-2.5 text-slate-600">{formatDateTime(t.started_at)}</td>
-                  <td className="px-4 py-2.5 text-slate-600">
-                    {STATUS_LABELS[t.status] ?? t.status}
-                  </td>
-                  <td className="px-4 py-2.5 text-slate-600">{t.distance_km.toFixed(1)} km</td>
-                  <td className="px-4 py-2.5 text-slate-500">{t.point_count}</td>
-                  <td className="px-4 py-2.5 text-slate-600">
-                    {t.max_speed_kph != null ? `${Math.round(t.max_speed_kph)} km/s` : "—"}
-                  </td>
-                </tr>
-              ))}
+              {trips.data.map((t) => {
+                const status = STATUS[t.status] ?? { label: t.status, tone: "neutral" as const };
+                return (
+                  <tr key={t.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-2.5 text-slate-600">{formatDateTime(t.started_at)}</td>
+                    <td className="px-4 py-2.5 text-ink-900">{vehicleName.get(t.vehicle_id) ?? "—"}</td>
+                    <td className="px-4 py-2.5">
+                      <Badge tone={status.tone}>{status.label}</Badge>
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-600">{t.distance_km.toFixed(1)} km</td>
+                    <td className="px-4 py-2.5 text-slate-500">{t.point_count}</td>
+                    <td className="px-4 py-2.5 text-slate-600">
+                      {t.max_speed_kph != null ? `${Math.round(t.max_speed_kph)} km/s` : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </Card>

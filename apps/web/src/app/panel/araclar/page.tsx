@@ -17,7 +17,7 @@ import {
 import { apiFetch, errorMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import type { Paginated, Vehicle } from "@/lib/types";
+import { vehicleListSchema, vehicleSchema } from "@/lib/schemas";
 
 const VEHICLE_STATUS: Record<string, { label: string; tone: "success" | "neutral" | "warning" }> = {
   active: { label: "Etkin", tone: "success" },
@@ -35,12 +35,13 @@ export default function VehiclesPage() {
 
   const query = useQuery({
     queryKey: ["vehicles"],
-    queryFn: () => apiFetch<Paginated<Vehicle>>("/api/v1/vehicles?limit=100"),
+    queryFn: () => apiFetch("/api/v1/vehicles?limit=100", { schema: vehicleListSchema }),
   });
 
   const create = useMutation({
     mutationFn: () =>
-      apiFetch<Vehicle>("/api/v1/vehicles", {
+      apiFetch("/api/v1/vehicles", {
+        schema: vehicleSchema,
         method: "POST",
         body: { external_id: externalId, plate: plate || null },
       }),
