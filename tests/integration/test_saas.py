@@ -58,6 +58,7 @@ def _bootstrap_platform_admin(test_settings: Settings) -> None:
     env = {
         **os.environ,
         "VISIONROUTE_DATABASE_URL": test_settings.database_url,
+        "VISIONROUTE_DISABLE_DOTENV": "1",
         "VISIONROUTE_BOOTSTRAP_ADMIN_EMAIL": "platform@ornek.example",
         "VISIONROUTE_BOOTSTRAP_ADMIN_PASSWORD": "PlatformParola2026!",
     }

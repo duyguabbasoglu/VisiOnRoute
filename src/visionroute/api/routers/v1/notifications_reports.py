@@ -412,6 +412,24 @@ async def safety_events_csv(
     )
 
 
+@router.get("/reports/coaching.csv")
+async def coaching_csv(
+    db: TenantSession,
+    ctx: Annotated[RequestContext, require_permission(Permission.REPORTS_READ)],
+) -> Response:
+    if not ctx.has_permission(Permission.COACHING_READ):
+        raise ForbiddenError
+    content = await ReportService(db).coaching_csv(_tenant(ctx))
+    await record_audit(
+        db, ctx, action="report.generated", resource_type="report", data={"kind": "coaching_csv"}
+    )
+    return Response(
+        content=content.encode("utf-8-sig"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="kocluk-gorevleri.csv"'},
+    )
+
+
 @router.get("/reports/executive.pdf")
 async def executive_pdf(
     db: TenantSession,

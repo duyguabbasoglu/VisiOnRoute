@@ -134,6 +134,83 @@ export const liveVehicleSchema = z.object({
 });
 export type LiveVehicle = z.infer<typeof liveVehicleSchema>;
 
+export const coachingActionSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string().nullable(),
+  status: z.string(),
+  status_label: z.string(),
+  is_overdue: z.boolean(),
+  safety_event_id: z.string().nullable(),
+  event_label: z.string().nullable(),
+  event_occurred_at: z.string().nullable(),
+  driver_id: z.string().nullable(),
+  driver_name: z.string().nullable(),
+  assignee_user_id: z.string().nullable(),
+  assignee_name: z.string().nullable(),
+  created_by_name: z.string().nullable(),
+  due_at: z.string().nullable(),
+  notes: z.string().nullable(),
+  outcome: z.string().nullable(),
+  outcome_label: z.string().nullable(),
+  outcome_notes: z.string().nullable(),
+  started_at: z.string().nullable(),
+  completed_at: z.string().nullable(),
+  canceled_at: z.string().nullable(),
+  cancel_reason: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+export type CoachingAction = z.infer<typeof coachingActionSchema>;
+
+export const coachingListSchema = z.object({
+  items: z.array(coachingActionSchema),
+  total: z.number(),
+  limit: z.number(),
+  offset: z.number(),
+});
+
+export const coachingSummarySchema = z.object({
+  open: z.number(),
+  in_progress: z.number(),
+  completed: z.number(),
+  canceled: z.number(),
+  overdue: z.number(),
+  completed_last_30_days: z.number(),
+  average_days_to_complete: z.number().nullable(),
+});
+
+export const coachingAssigneeSchema = z.object({
+  user_id: z.string(),
+  full_name: z.string(),
+  email: z.string(),
+  role_label: z.string(),
+});
+
+export const COACHING_OUTCOMES = [
+  { value: "coached", label: "Sürücüyle görüşme yapıldı" },
+  { value: "no_action_needed", label: "İşlem gerekmedi" },
+  { value: "escalated", label: "Üst yönetime iletildi" },
+  { value: "driver_unavailable", label: "Sürücüye ulaşılamadı" },
+] as const;
+
+export const RESOLUTIONS = [
+  { value: "kocluk_atandi", label: "Koçluk atandı" },
+  { value: "surucu_bilgilendirildi", label: "Sürücü bilgilendirildi" },
+  { value: "islem_gerekmedi", label: "İşlem gerekmedi" },
+  { value: "ekipman_kontrolu", label: "Ekipman/cihaz kontrolü" },
+  { value: "yanlis_alarm", label: "Yanlış alarm" },
+] as const;
+
+export const driverSchema = z.object({
+  id: z.string(),
+  external_id: z.string(),
+  full_name: z.string(),
+  phone: z.string().nullable(),
+  status: z.string(),
+  created_at: z.string(),
+});
+
 export const roadRiskSchema = z.object({
   id: z.string(),
   risk_type: z.string(),

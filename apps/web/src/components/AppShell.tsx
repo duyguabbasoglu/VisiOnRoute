@@ -12,6 +12,7 @@ const NAV: { href: string; label: string; permission: Permission | null }[] = [
   { href: "/panel", label: "Genel Bakış", permission: null },
   { href: "/panel/canli", label: "Canlı Operasyon", permission: "trips.read" },
   { href: "/panel/olaylar", label: "Güvenlik Olayları", permission: "events.read" },
+  { href: "/panel/kocluk", label: "Koçluk", permission: "coaching.read" },
   { href: "/panel/yol-riskleri", label: "Yol Riskleri", permission: "risks.read" },
   { href: "/panel/surucular", label: "Sürücüler", permission: "fleet.read" },
   { href: "/panel/araclar", label: "Araçlar", permission: "fleet.read" },

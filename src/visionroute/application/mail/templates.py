@@ -21,7 +21,9 @@ from zoneinfo import ZoneInfo
 _TZ = ZoneInfo("Europe/Istanbul")
 _FOOTER = "Bu e-posta VISiOnRoute tarafından otomatik olarak gönderildi; lütfen yanıtlamayın."
 
-TEMPLATES = frozenset({"invitation", "password_reset", "email_verification", "security_notice"})
+TEMPLATES = frozenset(
+    {"invitation", "password_reset", "email_verification", "security_notice", "coaching_assigned"}
+)
 
 SECURITY_EVENT_LABELS_TR: dict[str, str] = {
     "password_changed": "Parolanız değiştirildi",  # nosec B105 - UI label, not a secret
@@ -95,6 +97,28 @@ def _content(
             return None
         return _link(app_url, path, _require(secret_context, "token"))
 
+    if template == "coaching_assigned":
+        title = _require(context, "title")
+        due_at = context.get("due_at")
+        paragraphs = [
+            f"Merhaba {_require(context, 'full_name')},",
+            f"{_require(context, 'organization_name')} organizasyonunda size bir sürücü koçluğu "
+            f"görevi atandı: {title}.",
+        ]
+        if due_at:
+            paragraphs.append(f"Termin: {format_local(due_at)}.")
+        action_id = quote(_require(context, "action_id"), safe="")
+        return _Content(
+            subject=_single_line(f"Size koçluk görevi atandı: {title}"),
+            title="Yeni koçluk görevi",
+            paragraphs=paragraphs,
+            action=(
+                ("Görevi görüntüle", f"{app_url.rstrip('/')}/panel/kocluk/{action_id}")
+                if with_secrets
+                else None
+            ),
+            note=("Sürücü ve olay ayrıntıları yalnızca panelde, yetkili kullanıcılara gösterilir."),
+        )
     if template == "invitation":
         organization = _require(context, "organization_name")
         action = link("/davet")
