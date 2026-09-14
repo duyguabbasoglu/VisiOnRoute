@@ -1,5 +1,7 @@
 """Rate limiter adapters.
 
+Both use the sliding-window estimate from ``visionroute.domain.ratelimit``.
+
 - ``RedisRateLimiter`` — production: shared counters across API replicas
   (Redis is reserved for cache and rate limiting, ADR-0002).
 - ``InMemoryRateLimiter`` — local development and tests only; counters are
@@ -21,7 +23,12 @@ from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from visionroute.config.settings import Settings
-from visionroute.domain.ratelimit import RateLimitDecision, decide, window_index
+from visionroute.domain.ratelimit import (
+    RateLimitDecision,
+    decide,
+    sliding_estimate,
+    window_index,
+)
 from visionroute.observability.logging import get_logger
 
 logger = get_logger(__name__)
@@ -40,10 +47,12 @@ class InMemoryRateLimiter:
         index = window_index(now, window_seconds)
         async with self._lock:
             if len(self._counters) > _MAX_TRACKED_KEYS:
-                self._counters = {k: v for k, v in self._counters.items() if k[1] >= index}
+                self._counters = {k: v for k, v in self._counters.items() if k[1] >= index - 1}
             count = self._counters.get((key, index), 0) + 1
             self._counters[(key, index)] = count
-        return decide(count, limit=limit, now_seconds=now, window_seconds=window_seconds)
+            previous = self._counters.get((key, index - 1), 0)
+        estimate = sliding_estimate(count, previous, now_seconds=now, window_seconds=window_seconds)
+        return decide(estimate, limit=limit, now_seconds=now, window_seconds=window_seconds)
 
     async def close(self) -> None:
         return None
@@ -60,16 +69,22 @@ class RedisRateLimiter:
 
     async def hit(self, key: str, *, limit: int, window_seconds: int) -> RateLimitDecision:
         now = self._clock()
-        redis_key = f"vr:rl:{key}:{window_index(now, window_seconds)}"
+        index = window_index(now, window_seconds)
+        current_key = f"vr:rl:{key}:{index}"
         try:
             async with self._redis.pipeline(transaction=True) as pipe:
-                pipe.incr(redis_key)
-                pipe.expire(redis_key, window_seconds + 1, nx=True)
-                count, _ = await pipe.execute()
+                pipe.incr(current_key)
+                # Kept for two windows: it is the "previous" window next time.
+                pipe.expire(current_key, 2 * window_seconds + 1, nx=True)
+                pipe.get(f"vr:rl:{key}:{index - 1}")
+                count, _, previous = await pipe.execute()
         except (RedisError, OSError) as exc:
             logger.warning("rate_limiter_unavailable", error_type=type(exc).__name__)
             return RateLimitDecision(allowed=True, remaining=limit, retry_after_seconds=0)
-        return decide(int(count), limit=limit, now_seconds=now, window_seconds=window_seconds)
+        estimate = sliding_estimate(
+            int(count), int(previous or 0), now_seconds=now, window_seconds=window_seconds
+        )
+        return decide(estimate, limit=limit, now_seconds=now, window_seconds=window_seconds)
 
     async def close(self) -> None:
         await self._redis.aclose()
