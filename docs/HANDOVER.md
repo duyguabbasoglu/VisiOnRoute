@@ -1,6 +1,6 @@
 # Devir Kaydı / Handover Log
 
-Son güncelleme: 2026-09-14 (kontrollü pilot tamamlama çalışması). Bu belge
+Son güncelleme: 2026-09-16 (UI tamamlama, harita ve ücretsiz hobi dağıtım profili çalışması). Bu belge
 tamamlanamayan işleri, nedenlerini ve tamamlanma kriterlerini açıkça kaydeder.
 
 ## Doğrulanmış ortam gerçekleri
@@ -12,8 +12,12 @@ tamamlanamayan işleri, nedenlerini ve tamamlanma kriterlerini açıkça kaydede
   e-postası Mailpit'e SMTP ile ulaştı (bkz. docs/operations/demo-profile.md).
 - **Terraform**: `terraform fmt -check` ve `validate` (1.10.5, Docker imajı) staging ve
   production için başarılı. **`plan`/`apply` hiç çalıştırılmadı** (AWS kimlik bilgisi yok).
-- **GitHub**: depoda uzak (remote) tanımlı değil; CI/CD iş akışları hiç GitHub
-  üzerinde koşmadı. CI adımlarının yerel eşdeğerleri çalıştırıldı.
+- **GitHub**: uzak depo `duyguabbasoglu/VisiOnRoute` (public) tanımlı. Bu çalışmanın
+  itilmesinden önce CI GitHub üzerinde koşmamıştı; CI adımlarının yerel eşdeğerleri
+  çalıştırıldı.
+- **Ücretsiz hobi dağıtımı**: profil, `render.yaml` blueprint'i ve adım adım belge
+  hazır (docs/operations/hobby-deployment.md). **Hiçbir sağlayıcıda kaynak
+  oluşturulmadı**: Render/Neon/Upstash/Backblaze/Brevo hesap girişleri kullanıcıya ait.
 
 ## Yetenek durumu
 
@@ -33,16 +37,17 @@ tamamlanamayan işleri, nedenlerini ve tamamlanma kriterlerini açıkça kaydede
 | Türkçe PDF (DejaVu Sans) | Tamam | pypdf metin çıkarma testi (yazı tipi dizini gerekli) |
 | Raporlar, bildirimler/kurallar/webhook'lar, API anahtarı iptali, araç ataması, platform yönetimi ekranları | Tamam | Frontend build + E2E (rapor indirme, kural, iptal, atama) |
 | MQTT / Kafka / S3 toplu alım adaptörleri | **Kapsam dışı** | Spesifikasyon gerektirmiyor; REST + CSV alımı tam. `DataSource.kind` bu türleri kabul eder; tüketici eklemek broker altyapısı ve sözleşme testleri gerektirir |
-| Cihaz, kamera ve filo grupları için ekran | **Yapılmadı** | API uçları mevcut ve testli; pilot için panel ekranı eklenmedi |
-| Harita görünümü | **Yapılmadı** | Canlı operasyon kart listesi; kullanılmayan harita paketi güvenlik açığı nedeniyle kaldırıldı |
+| Cihaz, kamera ve filo grupları için ekran | Tamam | Filolar ve Cihazlar/Kameralar ekranları; cihaz/kamera güncelleme uçları eklendi (test_fleet), E2E filo akışı |
+| Harita görünümü | Tamam | MapLibre GL + OpenStreetMap (anahtarsız): harita sayfası, canlı operasyon, sefer güzergâhı, olay konumu; listeler erişilebilir alternatif olarak korunur |
 | Zararlı yazılım taraması, WAF, ECS otomatik ölçekleme | **Yapılmadı** | THREAT_MODEL kabul edilen riskler |
 | JWT çoklu anahtar rotasyonu | **Yapılmadı** | Tek imzalama anahtarı; değişimde kullanıcılar refresh ile yeni token alır |
 | AI yardımı | **Yapılmadı (bilinçli)** | ADR-0008 |
 
 ## Kullanıcının yapması gerekenler (kimlik bilgisi/karar gerektiren)
 
-1. Git uzak deposu tanımlayıp push etmek; CI'ın (backend, frontend, e2e, gitleaks,
-   terraform) GitHub'da yeşil olduğunu görmek.
+1. Ücretsiz hobi dağıtımı için sağlayıcı hesapları ve kimlik doğrulama:
+   Render, Neon, Upstash, Backblaze B2 ve Brevo (Vercel CLI bu makinede giriş
+   yapmış durumda). Adımlar: docs/operations/hobby-deployment.md.
 2. AWS: Terraform durum bucket'ı + kilit tablosu, Terraform rolü, ACM sertifikası,
    alan adı, SMTP sağlayıcısı; ardından staging `terraform apply` ve secret
    değerlerinin yazılması (docs/operations/deployment.md).
@@ -64,16 +69,18 @@ VISiOnRoute: Türkçe ulaşım güvenliği SaaS'ı. Modüler monolit
 (import-linter sınırları) + `apps/web` (Next.js 15.5, strict TS, Zod) +
 `infra/terraform` + `infra/docker`.
 
-**Durum**: 247 backend testi (S3 sözleşme ve Türkçe PDF testleri ortam
-değişkenleriyle), 12 Vitest, 16 Playwright akışı; ruff/mypy strict/bandit/
-pip-audit/pnpm audit temiz; 17 Alembic revizyonu up→down→up; Docker imajları
-ve compose yığını doğrulandı; Terraform validate başarılı.
+**Durum**: 253 backend testi + 1 atlanan (S3 sözleşme ve Türkçe PDF testleri ortam
+değişkenleriyle), 15 Vitest, 21 Playwright akışı; ruff/mypy strict/bandit/
+pip-audit/pnpm audit temiz; 17 Alembic revizyonu up→down→up ve `alembic check`;
+Docker imajları ve compose yığını doğrulandı; Terraform validate başarılı.
+Harita, filo/cihaz/kamera ekranları, sefer ayrıntısı, coğrafi alan oluşturma,
+sürücü risk skoru ve "sunucu uyanıyor" deneyimi eklendi.
 
 **Yerel**: PostgreSQL 17+PostGIS :5433 (`make db-up`), Redis, isteğe bağlı MinIO
 (`VISIONROUTE_TEST_S3_ENDPOINT`), DejaVu yazı tipi dizini
 (`VISIONROUTE_TEST_PDF_FONT_DIR`). `poetry run pytest`, `make e2e`.
 
-**Önerilen sıra**: GitHub'a push + CI → staging dağıtımı → pilot müşteriyle
-anonimleştirme ve saklama kararları → cihaz/kamera ekranları → harita. Kurallar:
+**Önerilen sıra**: hobi dağıtımı (sağlayıcı girişleri) → pilot müşteriyle
+anonimleştirme ve saklama kararları → AWS staging. Kurallar:
 AGENTS.md (Türkçe müşteri metni, migration zorunlu, testleri zayıflatma, sahte
 veri/entegrasyon yok).
