@@ -15,6 +15,7 @@ from pathlib import Path
 import typer
 
 from visionroute.cli.admin import app as admin_app
+from visionroute.cli.hobby import hobby_app
 from visionroute.cli.simulate import app as simulate_app
 from visionroute.cli.worker import scheduler_app, worker_app
 from visionroute.observability.logging import configure_logging
@@ -26,6 +27,7 @@ app.add_typer(admin_app, name="admin")
 app.add_typer(simulate_app, name="simulate")
 app.add_typer(worker_app, name="worker")
 app.add_typer(scheduler_app, name="scheduler")
+app.add_typer(hobby_app, name="hobby")
 security_app = typer.Typer(no_args_is_help=True, help="Güvenlik bakım işlemleri.")
 app.add_typer(security_app, name="security")
 

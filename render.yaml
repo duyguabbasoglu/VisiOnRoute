@@ -1,0 +1,85 @@
+# Render Blueprint — ZERO-COST HOBBY DEMO ONLY.
+#
+# One free web service runs migrations, API, outbox worker and scheduler in a
+# single container (`visionroute hobby serve`). This is NOT the production
+# topology (docs/operations/deployment.md keeps them as separate services).
+# Free instances sleep after inactivity and cold-start in about a minute.
+#
+# Every secret below is `sync: false`: Render asks for the value in its
+# dashboard; nothing secret is committed. Setup: docs/operations/hobby-deployment.md
+services:
+  - type: web
+    name: visionroute-api-demo
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./infra/docker/api.Dockerfile
+    dockerContext: .
+    dockerCommand: visionroute hobby serve
+    healthCheckPath: /health/ready
+    autoDeploy: false
+    envVars:
+      # --- mode: production-grade validation, synthetic data only ---
+      - key: VISIONROUTE_ENVIRONMENT
+        value: demo
+      - key: VISIONROUTE_DEBUG
+        value: "false"
+      - key: VISIONROUTE_COOKIE_SECURE
+        value: "true"
+      - key: FORWARDED_ALLOW_IPS
+        # The container port is reachable only through Render's proxy.
+        value: "*"
+      # --- public URLs (web origin proxies /api to this service) ---
+      - key: VISIONROUTE_PUBLIC_APP_URL
+        sync: false
+      - key: VISIONROUTE_CORS_ORIGINS
+        sync: false
+      # --- PostgreSQL + PostGIS (Neon, direct endpoint, TLS) ---
+      - key: VISIONROUTE_DATABASE_URL
+        sync: false
+      - key: VISIONROUTE_DATABASE_POOL_SIZE
+        value: "3"
+      - key: VISIONROUTE_DATABASE_POOL_MAX_OVERFLOW
+        value: "2"
+      # --- Redis (Upstash, rediss://) ---
+      - key: VISIONROUTE_REDIS_URL
+        sync: false
+      - key: VISIONROUTE_RATE_LIMIT_BACKEND
+        value: redis
+      # --- signing and field encryption (fresh demo-only keys) ---
+      - key: VISIONROUTE_JWT_PRIVATE_KEY
+        sync: false
+      - key: VISIONROUTE_JWT_PUBLIC_KEY
+        sync: false
+      - key: VISIONROUTE_FIELD_ENCRYPTION_KEYS
+        sync: false
+      - key: VISIONROUTE_FIELD_ENCRYPTION_PRIMARY_KEY_ID
+        sync: false
+      # --- transactional e-mail (Brevo SMTP relay; Render free blocks 25/465/587) ---
+      - key: VISIONROUTE_MAIL_BACKEND
+        value: smtp
+      - key: VISIONROUTE_SMTP_HOST
+        value: smtp-relay.brevo.com
+      - key: VISIONROUTE_SMTP_PORT
+        value: "2525"
+      - key: VISIONROUTE_SMTP_STARTTLS
+        value: "true"
+      - key: VISIONROUTE_SMTP_USERNAME
+        sync: false
+      - key: VISIONROUTE_SMTP_PASSWORD
+        sync: false
+      - key: VISIONROUTE_SMTP_FROM
+        sync: false
+      # --- S3-compatible evidence storage (private bucket, signed URLs) ---
+      - key: VISIONROUTE_STORAGE_BACKEND
+        value: s3
+      - key: VISIONROUTE_S3_ENDPOINT_URL
+        sync: false
+      - key: VISIONROUTE_S3_REGION
+        sync: false
+      - key: VISIONROUTE_S3_BUCKET_EVIDENCE
+        sync: false
+      - key: VISIONROUTE_S3_ACCESS_KEY_ID
+        sync: false
+      - key: VISIONROUTE_S3_SECRET_ACCESS_KEY
+        sync: false

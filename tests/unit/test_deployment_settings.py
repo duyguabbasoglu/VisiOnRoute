@@ -82,6 +82,13 @@ def test_jwt_keys_from_inline_pem_with_escaped_newlines() -> None:
     assert service.verify_access_token(token).user_id == user_id
 
 
+def test_hobby_demo_environment_gets_production_grade_validation() -> None:
+    assert Environment.DEMO.is_production_like
+    problems = _settings(environment=Environment.DEMO).validate_for_runtime()
+    for expected in ("TLS", "Redis adresi", "'smtp'", "'s3'", "https"):
+        assert any(expected in problem for problem in problems), expected
+
+
 def test_production_rejects_local_redis_and_cors_defaults() -> None:
     defaults = _settings(environment=Environment.PRODUCTION).validate_for_runtime()
     assert any("Redis adresi" in problem for problem in defaults)
