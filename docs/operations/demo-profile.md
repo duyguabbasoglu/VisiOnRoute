@@ -28,6 +28,20 @@ Portlar doluysa `VR_PG_PORT`, `VR_REDIS_PORT`, `VR_MINIO_PORT`, `VR_MINIO_CONSOL
 imajı API adresini derleme sırasında aldığı için `VR_API_PORT` değiştiğinde
 `--build` ile yeniden derleyin.
 
+Örnek (geliştirme makinesinde 3000/3001/5433/6379/9000 başka projelerce kullanılıyordu;
+2026-09-16'da bu değerlerle doğrulandı):
+
+```env
+VR_WEB_PORT=3002
+VR_REDIS_PORT=6380
+VR_PG_PORT=5434
+VR_MINIO_PORT=9010
+VR_MINIO_CONSOLE_PORT=9011
+```
+
+`VR_PG_PORT` yerel (Homebrew) PostgreSQL 5433 ile çakışmamalıdır: testler ve
+Playwright 5433'teki yerel kümeyi kullanır, compose yığını ayrı bir veritabanıdır.
+
 ## Kurulum
 
 ```bash
@@ -53,8 +67,11 @@ başlatma birkaç dakika sürebilir.
    make seed-demo API_KEY=vrk_... SOURCE_KEY=telematik-1 VEHICLE=34ABC123
    ```
 5. **Güvenlik Olayları** → olayı inceleyin, koçluk atayın; **Canlı Operasyon**
-   anlık bağlantı durumunu gösterir; **Gizlilik (KVKK)** → sürücü verisini dışa
-   aktarın; **Abonelik** → deneme süresi ve kullanım.
+   anlık bağlantı durumunu gösterir; **Harita** aktif araçları, konumlu olayları,
+   yol riski bölgelerini ve coğrafi alanları birlikte gösterir; **Seferler** →
+   *Ayrıntı* ile güzergâh ve sefere ait olaylar; **Filolar**, **Cihazlar ve
+   Kameralar** filo yapısını kurar; **Gizlilik (KVKK)** → sürücü verisini dışa
+   aktarın veya silin; **Abonelik** → deneme süresi ve kullanım.
 6. Kapatma: `docker compose --profile full down -v` (verileri siler).
 
 ## Sınırlar

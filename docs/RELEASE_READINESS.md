@@ -1,6 +1,6 @@
 # Sürüm Hazırlık Durumu / Release Readiness
 
-Son değerlendirme: 2026-09-14.
+Son değerlendirme: 2026-09-16 (UI tamamlama ve hobi dağıtım profili çalışması).
 
 **Karar: READY FOR CONTROLLED PILOT — yerel ve konteyner düzeyinde doğrulandı;
 staging dağıtımı kullanıcı kimlik bilgileriyle yapılmalı.**
@@ -26,6 +26,8 @@ yazılım taraması yok (docs/HANDOVER.md).
 | Olay inceleme ve koçluk ataması/tamamlama | ✅ | test_coaching, E2E |
 | Erişim kontrollü kanıt medyası | ✅ | test_evidence_media, MinIO sözleşme testi, E2E yükleme |
 | Kanıtta otomatik anonimleştirme | ❌ | Kapsam dışı; arayüzde açıkça belirtilir |
+| Filo yapısı, cihaz ve kamera ekranları | ✅ | E2E filo akışı (oluşturma, düzenleme, pasifleştirme, yetki sınırı) |
+| Harita (MapLibre + OpenStreetMap, anahtarsız) | ✅ | Harita sayfası, sefer güzergâhı, olay konumu; E2E'de canvas boyutu doğrulanır |
 | Raporlar (CSV, Türkçe PDF) | ✅ | test_notifications_reports, test_pdf_unicode, E2E indirme |
 | Bildirim kuralları ve imzalı webhook'lar | ✅ | test_notifications_reports, E2E kural oluşturma |
 | KVKK dışa aktarma/silme ve saklama | ✅ | test_privacy, E2E dışa aktarma |
@@ -37,9 +39,9 @@ yazılım taraması yok (docs/HANDOVER.md).
 
 | Kriter | Durum | Kanıt |
 |--------|-------|-------|
-| Birim + entegrasyon + güvenlik + sözleşme testleri | ✅ | 247 test (gerçek PostgreSQL/PostGIS, MinIO) |
-| Frontend birim testleri | ✅ | Vitest 12 |
-| Uçtan uca testler | ✅ | Playwright 16 akış (gerçek API + worker + üretim derlemesi) |
+| Birim + entegrasyon + güvenlik + sözleşme testleri | ✅ | 253 test + 1 atlanan (gerçek PostgreSQL/PostGIS, MinIO) |
+| Frontend birim testleri | ✅ | Vitest 15 |
+| Uçtan uca testler | ✅ | Playwright 21 akış (gerçek API + worker + üretim derlemesi); harita, filo, cihaz/kamera ve düşük yetki yolları dâhil |
 | Migration'lar | ✅ | 17 revizyon, her biri up→down→up, `alembic check` temiz |
 | Tip kontrolü / lint / import sınırları | ✅ | mypy strict, ruff, import-linter 2/2, tsc strict, eslint |
 | Güvenlik taramaları | ✅ | bandit, pip-audit ve `pnpm audit --prod` temiz (CI'da engelleyici) |

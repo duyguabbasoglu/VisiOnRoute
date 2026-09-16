@@ -226,3 +226,40 @@ Başlangıç (M12 sonrası denetim): 114 test, 8 migration, import-linter kırı
 - Kalite kapısı: 247 backend testi, 12 Vitest, 16 Playwright akışı, 17 migration;
   Docker derleme + compose duman testi, Terraform validate.
 - Yapılmayanlar ve kullanıcı eylemleri: docs/HANDOVER.md.
+
+## 2026-09-16 — UI tamamlama, harita ve ücretsiz hobi dağıtım profili
+
+Başlangıç durumu: 247 test, 16 Playwright akışı; cihaz/kamera/filo ekranları ve
+harita eksikti; README depoda tek satıra inmişti.
+
+- **Yerel çalışma zamanı**: makinedeki port çakışmaları teşhis edildi (3000/3001 ve
+  9000/9001 başka bir projenin konteynerlerinde, 6379 Homebrew Redis, 5433 Homebrew
+  PostgreSQL). `.env` sanitize edildi (yinelenen anahtarlar birleştirildi; alan
+  şifreleme anahtar halkası korunarak tek satıra indirildi), compose host portları
+  3002/6380/5434/9010/9011 olarak ayarlandı. Dokuz servisin tamamı sağlıklı;
+  `/health/ready` ok, web 200.
+- **Yeni ekranlar**: Filolar, Cihazlar ve Kameralar, Harita, Sefer ayrıntısı
+  (güzergâh + sefere ait olaylar); araç düzenleme, coğrafi alan oluşturma
+  (haritadan nokta seçme), sürücü risk skoru, olay listesinde araç/sürücü sütunu ve
+  sayfalama, entegrasyon bağlantı rehberi, Türkçe 404 ve panel hata sınırı.
+- **Harita**: MapLibre GL + OpenStreetMap (anahtarsız). Bulunan hata: MapLibre
+  konteynere `position: relative` uyguladığı için Tailwind `absolute inset-0` ezildi
+  ve tuval 0 px yüksekliğe düştü; konteyner `h-full w-full` ile boyutlandırıldı,
+  E2E'de tuval görünürlüğü regresyon testi olarak eklendi.
+- **Backend**: cihaz/kamera güncelleme uçları (PATCH, yalnızca `active`/`inactive`;
+  `offline`/`obstructed` platforma ait), güvenlik olayları için `trip_id` filtresi,
+  `Environment.DEMO` (üretim düzeyinde doğrulama, sentetik veri).
+- **Simülatör hatası düzeltildi**: tüm noktalar aynı `occurred_at` ile üretiliyor ve
+  4 noktalı döngüde zıplıyordu (40 nokta → 41,5 km "anlık" mesafe). Artık 5 sn
+  aralıklı, rota üzerinde ilerleyen, fiziksel olarak tutarlı örnekler üretiyor.
+- **Uyanma deneyimi**: ücretsiz sunucu uykudayken GET'ler sınırlı sayıda yeniden
+  denenir ve kullanıcıya Türkçe "sunucu uyanıyor" bildirimi gösterilir.
+- **Kalite kapısı**: 253 backend testi + 1 atlanan, 15 Vitest, 21 Playwright akışı,
+  17 migration (up→down→up + `alembic check`), ruff/mypy strict/import-linter/
+  bandit/pip-audit/pnpm audit temiz.
+- **Hobi dağıtımı**: `visionroute hobby serve` süreç yöneticisi (migration → worker +
+  scheduler + API, sinyal iletimi, çocuk süreç ölürse konteyner çıkar), `render.yaml`,
+  Vercel `/api` proxy'si (çerez birinci taraf kalsın diye) ve belgeler.
+  Cloudflare R2 ücretsiz katmanı bile kart istediği için nesne depolama tercihi
+  Backblaze B2 olarak belirlendi. Sağlayıcı hesapları kullanıcı girişi bekliyor.
+
