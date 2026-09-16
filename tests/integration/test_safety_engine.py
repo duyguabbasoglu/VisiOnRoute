@@ -85,6 +85,19 @@ async def test_harsh_braking_creates_explained_event(
     assert event["event_label"] == "Sert fren"
     assert event["severity"] in {"high", "critical"}
 
+    # The trip filter (trip detail screen) returns exactly the trip's events.
+    assert event["trip_id"] is not None
+    by_trip = client.get(
+        "/api/v1/safety-events", params={"trip_id": event["trip_id"]}, headers=_h(owner)
+    ).json()
+    assert [item["id"] for item in by_trip["items"]] == [event["id"]]
+    other_trip = client.get(
+        "/api/v1/safety-events",
+        params={"trip_id": "01900000-0000-7000-8000-000000000000"},
+        headers=_h(owner),
+    ).json()
+    assert other_trip["total"] == 0
+
     detail = client.get(f"/api/v1/safety-events/{event['id']}", headers=_h(owner)).json()
     exp = detail["explanation"]
     assert exp["ne_oldu"] == "Sert fren"

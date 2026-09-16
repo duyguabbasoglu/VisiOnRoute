@@ -188,6 +188,31 @@ class FleetService:
         )
         return await self._paginate(stmt, page)
 
+    async def update_device(
+        self,
+        ctx: RequestContext,
+        tenant_id: uuid.UUID,
+        device_id: uuid.UUID,
+        *,
+        changes: dict[str, object],
+    ) -> Device:
+        device = await self._require(Device, tenant_id, device_id, "Cihaz bulunamadı.")
+        vehicle_id = changes.get("vehicle_id")
+        if isinstance(vehicle_id, uuid.UUID):
+            await self._require(Vehicle, tenant_id, vehicle_id, "Araç bulunamadı.")
+        for field, value in changes.items():
+            setattr(device, field, value)
+        await self._flush_unique("Cihaz güncellenirken benzersizlik çakışması oluştu.")
+        await record_audit(
+            self._db,
+            ctx,
+            action="device.updated",
+            resource_type="device",
+            resource_id=str(device.id),
+            data={"fields": sorted(changes)},
+        )
+        return device
+
     # ------------------------------------------------------------- assignments
 
     async def assign_driver(
@@ -316,6 +341,34 @@ class FleetService:
             .order_by(Camera.created_at.desc())
         )
         return list(result.scalars())
+
+    async def update_camera(
+        self,
+        ctx: RequestContext,
+        tenant_id: uuid.UUID,
+        camera_id: uuid.UUID,
+        *,
+        changes: dict[str, object],
+    ) -> Camera:
+        camera = await self._require(Camera, tenant_id, camera_id, "Kamera bulunamadı.")
+        vehicle_id = changes.get("vehicle_id")
+        if isinstance(vehicle_id, uuid.UUID):
+            await self._require(Vehicle, tenant_id, vehicle_id, "Araç bulunamadı.")
+        device_id = changes.get("device_id")
+        if isinstance(device_id, uuid.UUID):
+            await self._require(Device, tenant_id, device_id, "Cihaz bulunamadı.")
+        for field, value in changes.items():
+            setattr(camera, field, value)
+        await self._flush_unique("Kamera güncellenirken benzersizlik çakışması oluştu.")
+        await record_audit(
+            self._db,
+            ctx,
+            action="camera.updated",
+            resource_type="camera",
+            resource_id=str(camera.id),
+            data={"fields": sorted(changes)},
+        )
+        return camera
 
     # ------------------------------------------------------------- helpers
 
