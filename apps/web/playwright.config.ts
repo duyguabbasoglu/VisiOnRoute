@@ -64,7 +64,16 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    {
+      name: "chromium",
+      use: {
+        ...devices["Desktop Chrome"],
+        // Software WebGL so MapLibre maps render in headless runs (local and CI).
+        launchOptions: { args: ["--enable-unsafe-swiftshader", "--use-angle=swiftshader"] },
+      },
+    },
+  ],
   webServer: [
     {
       command: `poetry run uvicorn visionroute.api.main:create_app --factory --host 127.0.0.1 --port ${new URL(API_URL).port}`,
