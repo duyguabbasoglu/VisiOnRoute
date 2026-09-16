@@ -1,0 +1,13 @@
+# Gitleaks configuration. Default rules stay enabled; only documented, clearly
+# fake test fixtures are allowlisted so scans stay meaningful.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+description = "Generic API Key"
+regex = '''(?i)(?:key|api|token|secret|client|passwd|password|auth|access)(?:[0-9a-z\-_\t .]{0,20})(?:[\s|']|[\s|"]){0,3}(?:=|>|:{1,3}=|\|\|:|<=|=>|:|\?=)(?:'|\"|\s|=|\x60){0,5}([0-9a-z\-_.=]{10,150})(?:['|\"|\n|\r|\s|\x60|;|\\]|$)'''
+keywords = ["key", "api", "token", "secret", "client", "passwd", "password", "auth", "access"]
+[rules.allowlist]
+description = "Hard-coded sample invitation token in a mail-template unit test (not a credential)."
+paths = ['''tests/unit/test_mail_templates\.py''']

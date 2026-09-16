@@ -26,6 +26,14 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U visionroute"
           --health-interval 5s --health-timeout 3s --health-retries 10
+      # The rate-limit integration test asserts that two limiter instances share
+      # counters through a real Redis; without this service it would fail open.
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
