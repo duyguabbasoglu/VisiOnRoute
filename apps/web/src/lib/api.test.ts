@@ -1,5 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, apiFetch, onSessionExpired, refreshSession, setAccessToken } from "./api";
+import {
+  ApiError,
+  apiFetch,
+  onServiceStatus,
+  onSessionExpired,
+  refreshSession,
+  setAccessToken,
+  setRetryDelays,
+} from "./api";
+
+setRetryDelays([]);
 
 const user = {
   id: "u1",
@@ -84,6 +94,46 @@ describe("apiFetch errors", () => {
     const { sessionUserSchema } = await import("./schemas");
     vi.stubGlobal("fetch", vi.fn(async () => json(200, { id: 1 })));
     await expect(apiFetch("/x", { schema: sessionUserSchema })).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+  });
+
+  it("retries GETs on gateway errors while a sleeping server starts", async () => {
+    setRetryDelays([0, 0]);
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        calls += 1;
+        return calls < 3 ? json(503, {}) : json(200, { ok: true });
+      }),
+    );
+    await expect(apiFetch("/x")).resolves.toEqual({ ok: true });
+    expect(calls).toBe(3);
+    setRetryDelays([]);
+  });
+
+  it("never retries writes", async () => {
+    setRetryDelays([0, 0]);
+    const fetchMock = vi.fn(async () => json(503, { error: { code: "UNAVAILABLE", message: "Hizmet geçici olarak kullanılamıyor." } }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(apiFetch("/x", { method: "POST", body: {} })).rejects.toMatchObject({ status: 503 });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    setRetryDelays([]);
+  });
+
+  it("reports slow requests and recovery", async () => {
+    vi.useFakeTimers();
+    const statuses: string[] = [];
+    const unsubscribe = onServiceStatus((status) => statuses.push(status));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>((resolve) => setTimeout(() => resolve(json(200, { ok: true })), 6_000))),
+    );
+    const pending = apiFetch("/x");
+    await vi.advanceTimersByTimeAsync(6_000);
+    await expect(pending).resolves.toEqual({ ok: true });
+    expect(statuses).toEqual(["slow", "ok"]);
+    unsubscribe();
+    vi.useRealTimers();
   });
 
   it("uses the backend Turkish error message", async () => {

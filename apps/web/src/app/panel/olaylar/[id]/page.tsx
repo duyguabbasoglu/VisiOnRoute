@@ -3,8 +3,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { z } from "zod";
+import { FleetMap } from "@/components/FleetMap";
 import {
   Alert,
   Badge,
@@ -20,6 +21,7 @@ import {
 } from "@/components/ui";
 import { ApiError, apiFetch, errorMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useDrivers, useVehicles } from "@/lib/fleet";
 import { can } from "@/lib/permissions";
 import {
   RESOLUTIONS,
@@ -43,6 +45,8 @@ export default function EventDetailPage() {
   const canManageCoaching = can(user, "coaching.manage");
   const canViewMedia = can(user, "events.evidence.raw_media");
   const canManageMedia = canViewMedia && canReview;
+  const vehicles = useVehicles();
+  const drivers = useDrivers();
 
   const [decision, setDecision] = useState("confirmed");
   const [resolution, setResolution] = useState("");
@@ -129,11 +133,36 @@ export default function EventDetailPage() {
               value={exp.nerede ? `${exp.nerede.latitude.toFixed(5)}, ${exp.nerede.longitude.toFixed(5)}` : "—"}
             />
             <Detail label="Hangi veri?" value={exp.hangi_veri} />
-            <Detail label="Hangi kural?" value={exp.hangi_kural} />
+            <Detail label="Hangi kural?" value={`${event.event_label} kuralı · sürüm ${event.ruleset_version}`} />
             <Detail label="Eşik / Ölçülen" value={`${exp.esik ?? "—"} / ${exp.olculen_deger ?? "—"}`} />
             <Detail label="Güven seviyesi" value={`%${Math.round(exp.guven_seviyesi * 100)}`} />
             <Detail label="Veri kalitesi" value={exp.veri_kalitesi != null ? `%${Math.round(exp.veri_kalitesi * 100)}` : "—"} />
+            <Detail label="Araç" value={vehicles.names.get(event.vehicle_id) ?? "—"} />
+            <Detail label="Sürücü" value={event.driver_id ? (drivers.names.get(event.driver_id) ?? "Atanmış sürücü") : "Atanmamış"} />
           </dl>
+          {exp.nerede && (
+            <FleetMap
+              label="Olay konumu"
+              className="mt-4 h-56"
+              data={{
+                events: [
+                  {
+                    id: event.id,
+                    latitude: exp.nerede.latitude,
+                    longitude: exp.nerede.longitude,
+                    label: event.event_label,
+                    detail: formatDateTime(event.occurred_at),
+                    severity: event.severity,
+                  },
+                ],
+              }}
+            />
+          )}
+          {event.trip_id && (
+            <Link href={`/panel/seferler/${event.trip_id}`} className="mt-3 inline-block text-sm text-brand-700 hover:underline">
+              Olayın gerçekleştiği seferi aç
+            </Link>
+          )}
           {exp.inceleme_gerekli && (
             <Alert kind="warning" className="mt-4">
               Düşük veri kalitesi nedeniyle bu olay insan incelemesi gerektiriyor.
@@ -406,6 +435,7 @@ async function sendToStorage(slot: z.infer<typeof uploadSlotSchema>["upload"], f
 
 function EvidenceUpload({ eventId }: { eventId: string }) {
   const queryClient = useQueryClient();
+  const inputId = useId();
   const [file, setFile] = useState<File | null>(null);
   const [feedback, setFeedback] = useState<{ kind: "success" | "error"; text: string } | null>(null);
 
@@ -444,18 +474,30 @@ function EvidenceUpload({ eventId }: { eventId: string }) {
         upload.mutate(file);
       }}
     >
-      <label className="text-sm text-slate-700">
-        <span className="mb-1 block font-medium">Görüntü veya video kanıtı ekle</span>
-        <input
-          type="file"
-          accept={ALLOWED_MEDIA.join(",")}
-          onChange={(e) => {
-            setFeedback(null);
-            setFile(e.target.files?.[0] ?? null);
-          }}
-          className="text-sm"
-        />
-      </label>
+      <div className="text-sm text-slate-700">
+        <label htmlFor={inputId} className="mb-1 block font-medium">
+          Görüntü veya video kanıtı ekle
+        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            id={inputId}
+            type="file"
+            accept={ALLOWED_MEDIA.join(",")}
+            onChange={(e) => {
+              setFeedback(null);
+              setFile(e.target.files?.[0] ?? null);
+            }}
+            className="peer sr-only"
+          />
+          <label
+            htmlFor={inputId}
+            className="cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-2 font-medium text-slate-700 hover:bg-slate-50 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500/40"
+          >
+            Dosya seç
+          </label>
+          <span className="max-w-[16rem] truncate text-slate-500">{file ? file.name : "Dosya seçilmedi"}</span>
+        </div>
+      </div>
       <Button type="submit" disabled={!file} loading={upload.isPending}>
         Yükle
       </Button>

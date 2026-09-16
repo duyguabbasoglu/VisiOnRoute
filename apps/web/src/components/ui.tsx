@@ -1,6 +1,14 @@
 "use client";
 
-import { useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
+import {
+  useId,
+  useState,
+  type ButtonHTMLAttributes,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
+} from "react";
 
 export function PageHeader({
   title,
@@ -272,4 +280,164 @@ const DATE_TIME = new Intl.DateTimeFormat("tr-TR", {
 export function formatDateTime(iso: string | null): string {
   if (!iso) return "—";
   return DATE_TIME.format(new Date(iso));
+}
+
+export type FeedbackState = { kind: "success" | "error"; text: string } | null;
+
+const FIELD_CLASS =
+  "mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 disabled:bg-slate-50";
+
+function FieldShell({
+  id,
+  label,
+  hint,
+  error,
+  className,
+  children,
+}: {
+  id: string;
+  label: string;
+  hint?: string;
+  error?: string;
+  className: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className={className}>
+      <label htmlFor={id} className="block text-sm font-medium text-slate-700">
+        {label}
+      </label>
+      {children}
+      {error ? (
+        <p id={`${id}-error`} className="mt-1 text-xs text-red-600">
+          {error}
+        </p>
+      ) : hint ? (
+        <p id={`${id}-hint`} className="mt-1 text-xs text-slate-500">
+          {hint}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+export function SelectField({
+  label,
+  hint,
+  error,
+  className = "",
+  children,
+  ...rest
+}: SelectHTMLAttributes<HTMLSelectElement> & { label: string; hint?: string; error?: string }) {
+  const id = useId();
+  return (
+    <FieldShell id={id} label={label} hint={hint} error={error} className={className}>
+      <select
+        id={id}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? `${id}-error` : hint ? `${id}-hint` : undefined}
+        className={FIELD_CLASS}
+        {...rest}
+      >
+        {children}
+      </select>
+    </FieldShell>
+  );
+}
+
+export function TextAreaField({
+  label,
+  hint,
+  error,
+  className = "",
+  ...rest
+}: TextareaHTMLAttributes<HTMLTextAreaElement> & { label: string; hint?: string; error?: string }) {
+  const id = useId();
+  return (
+    <FieldShell id={id} label={label} hint={hint} error={error} className={className}>
+      <textarea
+        id={id}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? `${id}-error` : hint ? `${id}-hint` : undefined}
+        className={FIELD_CLASS}
+        {...rest}
+      />
+    </FieldShell>
+  );
+}
+
+/** Section title inside a card, with optional description and action. */
+export function SectionHeading({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description?: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h2 className="text-sm font-semibold text-ink-900">{title}</h2>
+        {description && <p className="mt-0.5 text-xs text-slate-500">{description}</p>}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+export const CELL = "px-4 py-2.5";
+
+/** Card-wrapped table that scrolls horizontally on narrow screens. */
+export function DataTable({
+  label,
+  headers,
+  children,
+  className = "",
+}: {
+  label: string;
+  headers: string[];
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <Card className={`overflow-x-auto p-0 ${className}`}>
+      <table aria-label={label} className="w-full min-w-[36rem] text-sm">
+        <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs text-slate-500">
+          <tr>
+            {headers.map((header, index) => (
+              <th key={`${header}-${index}`} scope="col" className={`${CELL} font-medium`}>
+                {header}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">{children}</tbody>
+      </table>
+    </Card>
+  );
+}
+
+export function SkeletonRows({ rows = 3 }: { rows?: number }) {
+  return (
+    <div role="status" aria-label="Yükleniyor" className="space-y-2">
+      {Array.from({ length: rows }, (_, index) => (
+        <div key={index} className="h-10 animate-pulse rounded-lg bg-slate-200/70" />
+      ))}
+    </div>
+  );
+}
+
+export function DetailRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="flex justify-between gap-4 py-1.5 text-sm">
+      <dt className="text-slate-500">{label}</dt>
+      <dd className="text-right text-slate-800">{value}</dd>
+    </div>
+  );
+}
+
+export function formatNumber(value: number, maximumFractionDigits = 1): string {
+  return value.toLocaleString("tr-TR", { maximumFractionDigits });
 }

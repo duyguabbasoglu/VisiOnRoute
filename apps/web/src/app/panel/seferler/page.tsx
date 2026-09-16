@@ -1,71 +1,94 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
+import { useState } from "react";
 import { z } from "zod";
-import { Badge, Card, EmptyState, ErrorState, LoadingState, PageHeader, formatDateTime } from "@/components/ui";
+import {
+  Badge,
+  CELL,
+  DataTable,
+  EmptyState,
+  ErrorState,
+  PageHeader,
+  SkeletonRows,
+  formatDateTime,
+  formatNumber,
+} from "@/components/ui";
 import { apiFetch, errorMessage } from "@/lib/api";
-import { tripSchema, vehicleListSchema } from "@/lib/schemas";
-
-const STATUS: Record<string, { label: string; tone: "success" | "neutral" | "warning" }> = {
-  active: { label: "Devam ediyor", tone: "success" },
-  completed: { label: "Tamamlandı", tone: "neutral" },
-  stale: { label: "Sinyal kesildi", tone: "warning" },
-};
+import { TRIP_STATUS, useDrivers, useVehicles } from "@/lib/fleet";
+import { tripSchema } from "@/lib/schemas";
 
 export default function TripsPage() {
+  const [status, setStatus] = useState("");
   const trips = useQuery({
-    queryKey: ["trips"],
-    queryFn: () => apiFetch("/api/v1/trips?limit=100", { schema: z.array(tripSchema) }),
+    queryKey: ["trips", status],
+    queryFn: () =>
+      apiFetch(`/api/v1/trips?limit=100${status ? `&status=${status}` : ""}`, { schema: z.array(tripSchema) }),
   });
-  const vehicles = useQuery({
-    queryKey: ["vehicles"],
-    queryFn: () => apiFetch("/api/v1/vehicles?limit=100", { schema: vehicleListSchema }),
-  });
-  const vehicleName = new Map((vehicles.data?.items ?? []).map((v) => [v.id, v.plate ?? v.external_id]));
+  const vehicles = useVehicles();
+  const drivers = useDrivers();
 
   return (
     <div>
-      <PageHeader title="Seferler" description="Araç seferleri ve mesafe özetleri." />
+      <PageHeader
+        title="Seferler"
+        description="Telemetri geldikçe otomatik oluşturulan araç seferleri; güzergâh ve olaylar için ayrıntıyı açın."
+        action={
+          <label className="text-sm text-slate-600">
+            <span className="sr-only">Sefer durumu</span>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
+            >
+              <option value="">Tüm seferler</option>
+              {Object.entries(TRIP_STATUS).map(([value, s]) => (
+                <option key={value} value={value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        }
+      />
       {trips.isLoading ? (
-        <LoadingState />
+        <SkeletonRows rows={4} />
       ) : trips.isError ? (
         <ErrorState message={errorMessage(trips.error, "Seferler yüklenemedi.")} onRetry={() => void trips.refetch()} />
       ) : !trips.data?.length ? (
-        <EmptyState message="Henüz sefer kaydı yok. Telemetri geldikçe seferler otomatik oluşturulur." />
+        <EmptyState
+          message={
+            status
+              ? "Seçili durumda sefer yok."
+              : "Henüz sefer kaydı yok. Telemetri geldikçe seferler otomatik oluşturulur."
+          }
+        />
       ) : (
-        <Card className="overflow-x-auto p-0">
-          <table className="w-full text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs text-slate-500">
-              <tr>
-                <th className="px-4 py-2.5 font-medium">Başlangıç</th>
-                <th className="px-4 py-2.5 font-medium">Araç</th>
-                <th className="px-4 py-2.5 font-medium">Durum</th>
-                <th className="px-4 py-2.5 font-medium">Mesafe</th>
-                <th className="px-4 py-2.5 font-medium">Nokta</th>
-                <th className="px-4 py-2.5 font-medium">Azami hız</th>
+        <DataTable label="Seferler" headers={["Başlangıç", "Araç", "Sürücü", "Durum", "Mesafe", "Azami hız", ""]}>
+          {trips.data.map((t) => {
+            const s = TRIP_STATUS[t.status] ?? { label: t.status, tone: "neutral" as const };
+            return (
+              <tr key={t.id} className="hover:bg-slate-50">
+                <td className={`${CELL} text-slate-600`}>{formatDateTime(t.started_at)}</td>
+                <td className={`${CELL} font-medium text-ink-900`}>{vehicles.names.get(t.vehicle_id) ?? "—"}</td>
+                <td className={`${CELL} text-slate-600`}>{t.driver_id ? (drivers.names.get(t.driver_id) ?? "—") : "—"}</td>
+                <td className={CELL}>
+                  <Badge tone={s.tone}>{s.label}</Badge>
+                </td>
+                <td className={`${CELL} text-slate-600`}>{formatNumber(t.distance_km)} km</td>
+                <td className={`${CELL} text-slate-600`}>
+                  {t.max_speed_kph != null ? `${Math.round(t.max_speed_kph)} km/s` : "—"}
+                </td>
+                <td className={`${CELL} text-right`}>
+                  <Link href={`/panel/seferler/${t.id}`} className="text-xs font-medium text-brand-700 hover:underline">
+                    Ayrıntı
+                  </Link>
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {trips.data.map((t) => {
-                const status = STATUS[t.status] ?? { label: t.status, tone: "neutral" as const };
-                return (
-                  <tr key={t.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-2.5 text-slate-600">{formatDateTime(t.started_at)}</td>
-                    <td className="px-4 py-2.5 text-ink-900">{vehicleName.get(t.vehicle_id) ?? "—"}</td>
-                    <td className="px-4 py-2.5">
-                      <Badge tone={status.tone}>{status.label}</Badge>
-                    </td>
-                    <td className="px-4 py-2.5 text-slate-600">{t.distance_km.toFixed(1)} km</td>
-                    <td className="px-4 py-2.5 text-slate-500">{t.point_count}</td>
-                    <td className="px-4 py-2.5 text-slate-600">
-                      {t.max_speed_kph != null ? `${Math.round(t.max_speed_kph)} km/s` : "—"}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </Card>
+            );
+          })}
+        </DataTable>
       )}
     </div>
   );
