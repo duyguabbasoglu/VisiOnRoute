@@ -33,13 +33,13 @@ test.describe.serial("filo güvenliği operasyonu", () => {
     await page.goto("/panel/araclar");
     await page.getByLabel("Dış kimlik").fill(vehicleId);
     await page.getByRole("button", { name: "Araç ekle" }).click();
-    await expect(page.getByRole("cell", { name: vehicleId })).toBeVisible();
+    await expect(page.getByRole("cell", { name: vehicleId, exact: true })).toBeVisible();
 
     await page.goto("/panel/surucular");
     await page.getByLabel("Dış kimlik").fill("SUR-E2E");
     await page.getByLabel("Ad soyad").fill("Kemal Sürücü");
     await page.getByRole("button", { name: "Sürücü ekle" }).click();
-    await expect(page.getByRole("cell", { name: "Kemal Sürücü" })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "Kemal Sürücü", exact: true })).toBeVisible();
 
     await page.goto("/panel/entegrasyonlar");
     await page.getByLabel("Ad", { exact: true }).fill("Telematik");
