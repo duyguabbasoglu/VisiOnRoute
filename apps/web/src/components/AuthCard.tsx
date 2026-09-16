@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { DemoModeBanner, ServiceStatusBanner } from "@/components/ServiceStatus";
 
 /** Shared frame for public account pages (login, registration, recovery). */
 export function AuthCard({
@@ -14,7 +15,11 @@ export function AuthCard({
   footer?: ReactNode;
 }) {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-ink-900 p-4 sm:p-6">
+    <main className="flex min-h-screen flex-col items-center justify-center bg-ink-900 p-4 sm:p-6">
+      <div className="fixed inset-x-0 top-0 z-10">
+        <DemoModeBanner />
+        <ServiceStatusBanner />
+      </div>
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl sm:p-8">
         <div className="mb-6">
           <Link href="/giris" className="text-sm font-semibold tracking-wide text-brand-700">
@@ -26,6 +31,10 @@ export function AuthCard({
         {children}
         {footer && <div className="mt-6 border-t border-slate-100 pt-4 text-sm">{footer}</div>}
       </div>
+      <p className="mt-6 max-w-md text-center text-xs text-slate-400">
+        VISiOnRoute riskli sürüş davranışlarını ve yol güvenliği sinyallerini görünür kılar; kazaları
+        önlediğini iddia etmez ve insan değerlendirmesinin yerini almaz.
+      </p>
     </main>
   );
 }

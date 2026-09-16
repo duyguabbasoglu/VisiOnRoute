@@ -26,3 +26,14 @@
 body {
   @apply bg-slate-50 text-slate-900 antialiased;
 }
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--color-brand-600);
+}
+
+.maplibregl-popup-content {
+  font-family: var(--font-sans);
+  border-radius: 0.75rem;
+  padding: 0.75rem 2rem 0.75rem 0.875rem;
+}

@@ -13,10 +13,12 @@ import {
   ErrorState,
   LoadingState,
   PageHeader,
+  SectionHeading,
+  SelectField,
   TextField,
   formatDateTime,
 } from "@/components/ui";
-import { apiFetch, errorMessage } from "@/lib/api";
+import { API_BASE, apiFetch, errorMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import {
@@ -45,54 +47,81 @@ export default function IntegrationsPage() {
       {canManage && <NewApiKey />}
       <ApiClients canManage={canManage} />
       <DataSources />
+      <SetupGuide />
     </div>
   );
 }
+
+const SOURCE_KINDS = [
+  { value: "rest", label: "REST API (JSON olay gönderimi)" },
+  { value: "csv", label: "CSV içe aktarma" },
+] as const;
 
 function NewDataSource() {
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [sourceKey, setSourceKey] = useState("");
+  const [kind, setKind] = useState<string>("rest");
   const [error, setError] = useState<string | null>(null);
+  const [created, setCreated] = useState<string | null>(null);
+  const keyInvalid = sourceKey !== "" && !/^[a-z0-9][a-z0-9-]*$/.test(sourceKey);
   const create = useMutation({
     mutationFn: () =>
       apiFetch("/api/v1/integrations/data-sources", {
         method: "POST",
-        body: { name, source_key: sourceKey, kind: "rest" },
+        body: { name: name.trim(), source_key: sourceKey, kind },
         schema: dataSourceSchema,
       }),
-    onSuccess: () => {
+    onSuccess: (source) => {
       setName("");
       setSourceKey("");
       setError(null);
+      setCreated(`“${source.name}” veri kaynağı oluşturuldu. Olay gönderirken source_key olarak ${source.source_key} kullanın.`);
       void queryClient.invalidateQueries({ queryKey: ["data-sources"] });
     },
-    onError: (err) => setError(errorMessage(err, "Veri kaynağı oluşturulamadı.")),
+    onError: (err) => {
+      setCreated(null);
+      setError(errorMessage(err, "Veri kaynağı oluşturulamadı."));
+    },
   });
 
   return (
     <Card className="mb-4">
-      <h2 className="mb-3 text-sm font-semibold text-ink-900">Yeni veri kaynağı</h2>
+      <SectionHeading title="Yeni veri kaynağı" description="Telemetri gönderen her sistem (telematik sağlayıcısı, cihaz ağ geçidi) için bir kaynak tanımlayın." />
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          create.mutate();
+          if (!keyInvalid) create.mutate();
         }}
-        className="flex flex-wrap items-end gap-3"
+        className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto]"
       >
-        <TextField label="Ad" required value={name} onChange={(e) => setName(e.target.value)} />
+        <TextField label="Ad" required maxLength={200} value={name} onChange={(e) => setName(e.target.value)} placeholder="Telematik sağlayıcısı" />
         <TextField
           label="Kaynak anahtarı"
           required
+          maxLength={120}
           value={sourceKey}
           onChange={(e) => setSourceKey(e.target.value)}
           placeholder="telematik-1"
           hint="Küçük harf, rakam ve tire."
+          error={keyInvalid ? "Yalnızca küçük harf, rakam ve tire kullanın." : undefined}
         />
-        <Button type="submit" loading={create.isPending}>
+        <SelectField label="Gönderim yöntemi" value={kind} onChange={(e) => setKind(e.target.value)}>
+          {SOURCE_KINDS.map((k) => (
+            <option key={k.value} value={k.value}>
+              {k.label}
+            </option>
+          ))}
+        </SelectField>
+        <Button type="submit" className="lg:mt-6" loading={create.isPending} disabled={!name.trim() || !sourceKey || keyInvalid}>
           Oluştur
         </Button>
       </form>
+      {created && (
+        <Alert kind="success" className="mt-3">
+          {created}
+        </Alert>
+      )}
       {error && (
         <Alert kind="error" className="mt-3">
           {error}
@@ -132,11 +161,8 @@ function NewApiKey() {
 
   return (
     <Card className="mb-4">
-      <h2 className="text-sm font-semibold text-ink-900">API anahtarı</h2>
-      <p className="text-xs text-slate-500">
-        Anahtara yalnızca gereken yetkileri verin. Anahtar yalnızca bir kez gösterilir.
-      </p>
-      <div className="mt-3 flex flex-wrap items-end gap-3">
+      <SectionHeading title="API anahtarı" description="Anahtara yalnızca gereken yetkileri verin. Anahtar yalnızca bir kez gösterilir." />
+      <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
         <TextField
           label="İstemci adı"
           value={clientName}
@@ -144,7 +170,7 @@ function NewApiKey() {
           placeholder="Ör. Kabin kamerası 12"
           onChange={(e) => setClientName(e.target.value)}
         />
-        <fieldset className="flex flex-wrap gap-4 text-sm text-slate-700">
+        <fieldset className="flex flex-wrap gap-4 pb-2 text-sm text-slate-700">
           <legend className="sr-only">Anahtar kapsamları</legend>
           {API_SCOPES.map((scope) => (
             <label key={scope.value} className="flex items-center gap-2">
@@ -319,5 +345,57 @@ function DataSources() {
         <EmptyState message="Henüz veri kaynağı tanımlanmamış." />
       )}
     </>
+  );
+}
+
+const EXAMPLE_EVENT = `{
+  "source_key": "telematik-1",
+  "events": [{
+    "schema_version": "1.0",
+    "source": "telematik-1",
+    "event_id": "cihaz-0001-000123",
+    "event_type": "telemetry.position",
+    "occurred_at": "2026-09-15T08:30:00Z",
+    "vehicle_external_id": "34ABC123",
+    "driver_external_id": "SUR-001",
+    "payload": {
+      "latitude": 39.9208, "longitude": 32.8541,
+      "speed_kph": 62.5, "acceleration_ms2": -1.2,
+      "data_origin": "synthetic", "environment": "demo"
+    }
+  }]
+}`;
+
+function SetupGuide() {
+  // Same-origin API (hobby proxy) leaves API_BASE empty; show the absolute address.
+  const base = API_BASE || (typeof window !== "undefined" ? window.location.origin : "");
+  return (
+    <Card className="mt-6">
+      <SectionHeading
+        title="Bağlantı rehberi"
+        description="Cihaz veya telematik sağlayıcınızın VISiOnRoute'a telemetri göndermesi için adımlar."
+      />
+      <ol className="list-decimal space-y-2 pl-5 text-sm text-slate-700">
+        <li>Araçlar sayfasında aracı, telemetrideki kimliğiyle (dış kimlik) ekleyin.</li>
+        <li>Yukarıda bir veri kaynağı ve “Telemetri gönderimi” kapsamlı bir API anahtarı oluşturun.</li>
+        <li>
+          Olayları <code className="rounded bg-slate-100 px-1 font-mono text-xs">X-API-Key</code> başlığıyla{" "}
+          <code className="rounded bg-slate-100 px-1 font-mono text-xs break-all">POST {base}/api/v1/ingest/events</code>{" "}
+          adresine gönderin. Aynı <code className="font-mono text-xs">event_id</code> tekrar gönderilirse kopya sayılır.
+        </li>
+        <li>Kabul, red ve kopya sayıları “Kaynak sağlığı” tablosunda görünür; olaylar birkaç saniye içinde üretilir.</li>
+      </ol>
+      <details className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+        <summary className="cursor-pointer font-medium text-slate-700">Örnek istek gövdesi (geliştiriciler için)</summary>
+        <pre className="mt-3 overflow-x-auto rounded bg-ink-900 p-3 font-mono text-xs leading-relaxed text-slate-100">
+          {EXAMPLE_EVENT}
+        </pre>
+        <p className="mt-2 text-xs text-slate-500">
+          Test verisi gönderirken <code className="font-mono">data_origin: &quot;synthetic&quot;</code> ve{" "}
+          <code className="font-mono">environment: &quot;demo&quot;</code> alanlarını mutlaka ekleyin; sentetik veri gerçek kanıt yerine
+          kullanılamaz. Ayrıntılı sözleşme: depo içindeki docs/api/ingestion.md.
+        </p>
+      </details>
+    </Card>
   );
 }

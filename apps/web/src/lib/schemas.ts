@@ -501,3 +501,59 @@ export const safetyEventDetailSchema = safetyEventSchema.extend({
     .nullable(),
 });
 export const reviewResponseSchema = z.object({ coaching_action_id: z.string().nullable() }).passthrough();
+
+export const fleetSchema = z.object({ id: z.string(), name: z.string(), region: z.string().nullable() });
+export type Fleet = z.infer<typeof fleetSchema>;
+
+export const deviceSchema = z.object({
+  id: z.string(),
+  external_id: z.string(),
+  kind: z.string(),
+  label: z.string().nullable(),
+  status: z.string(),
+  vehicle_id: z.string().nullable(),
+  last_seen_at: z.string().nullable(),
+});
+export type Device = z.infer<typeof deviceSchema>;
+export const deviceListSchema = z.object({ items: z.array(deviceSchema), pagination: paginationSchema });
+
+export const cameraSchema = z.object({
+  id: z.string(),
+  external_id: z.string(),
+  position: z.string(),
+  status: z.string(),
+  vehicle_id: z.string().nullable(),
+  device_id: z.string().nullable(),
+});
+export type Camera = z.infer<typeof cameraSchema>;
+
+export const geofenceSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  kind: z.string(),
+  center_latitude: z.number(),
+  center_longitude: z.number(),
+  radius_m: z.number(),
+  active: z.boolean(),
+});
+export type Geofence = z.infer<typeof geofenceSchema>;
+
+export const trailPointSchema = z.object({
+  occurred_at: z.string(),
+  latitude: z.number(),
+  longitude: z.number(),
+  speed_kph: z.number().nullable(),
+  quality: z.number(),
+});
+
+export const driverScoreSchema = z.object({
+  driver_id: z.string(),
+  score: z.number().nullable(),
+  risk_index: z.number().nullable(),
+  exposure_km: z.number(),
+  event_count: z.number(),
+  weighted_events: z.number(),
+  model_version: z.number(),
+  has_sufficient_exposure: z.boolean(),
+  note: z.string().nullable(),
+});

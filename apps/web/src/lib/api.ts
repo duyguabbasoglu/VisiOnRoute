@@ -33,6 +33,53 @@ export function onSessionExpired(listener: () => void): () => void {
   return () => sessionExpiredListeners.delete(listener);
 }
 
+/**
+ * Free-tier hosts put idle servers to sleep; the first request then takes up
+ * to a minute. Slow requests flip a "slow" status the UI can explain, and
+ * idempotent GETs are retried on gateway errors while the server starts.
+ */
+export type ServiceStatus = "ok" | "slow";
+const SLOW_AFTER_MS = 4_000;
+const RETRYABLE_STATUS = new Set([502, 503, 504]);
+let retryDelaysMs: number[] = [2_000, 4_000, 8_000, 15_000];
+let slowRequests = 0;
+const serviceListeners = new Set<(status: ServiceStatus) => void>();
+
+export function onServiceStatus(listener: (status: ServiceStatus) => void): () => void {
+  serviceListeners.add(listener);
+  if (slowRequests > 0) listener("slow");
+  return () => {
+    serviceListeners.delete(listener);
+  };
+}
+
+/** Test hook: shorten or disable GET retry back-off. */
+export function setRetryDelays(delays: number[]): void {
+  retryDelaysMs = delays;
+}
+
+async function tracked<T>(work: () => Promise<T>): Promise<T> {
+  let slow = false;
+  const timer = setTimeout(() => {
+    slow = true;
+    slowRequests += 1;
+    if (slowRequests === 1) serviceListeners.forEach((listener) => listener("slow"));
+  }, SLOW_AFTER_MS);
+  try {
+    return await work();
+  } finally {
+    clearTimeout(timer);
+    if (slow) {
+      slowRequests -= 1;
+      if (slowRequests === 0) serviceListeners.forEach((listener) => listener("ok"));
+    }
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -71,10 +118,12 @@ export function refreshSession(): Promise<AuthResponse | null> {
   if (refreshInFlight === null) {
     refreshInFlight = (async () => {
       try {
-        const response = await fetch(`${API_BASE}/api/v1/auth/refresh`, {
-          method: "POST",
-          credentials: "include",
-        });
+        const response = await tracked(() =>
+          fetch(`${API_BASE}/api/v1/auth/refresh`, {
+            method: "POST",
+            credentials: "include",
+          }),
+        );
         if (!response.ok) return null;
         const parsed = authResponseSchema.safeParse(await response.json());
         if (!parsed.success) return null;
@@ -102,18 +151,33 @@ async function send(path: string, method: string, body: unknown, signal?: AbortS
   const headers: Record<string, string> = {};
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-  try {
-    return await fetch(`${API_BASE}${path}`, {
-      method,
-      headers,
-      credentials: "include",
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal,
-    });
-  } catch (err) {
-    if (err instanceof DOMException && err.name === "AbortError") throw err;
-    throw new ApiError(0, "NETWORK_ERROR", NETWORK_MESSAGE);
-  }
+  return tracked(async () => {
+    for (let attempt = 0; ; attempt += 1) {
+      // Only GETs are retried: repeating a write could apply it twice.
+      const delay = method === "GET" ? retryDelaysMs[attempt] : undefined;
+      try {
+        const response = await fetch(`${API_BASE}${path}`, {
+          method,
+          headers,
+          credentials: "include",
+          body: body === undefined ? undefined : JSON.stringify(body),
+          signal,
+        });
+        if (delay !== undefined && RETRYABLE_STATUS.has(response.status)) {
+          await sleep(delay);
+          continue;
+        }
+        return response;
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") throw err;
+        if (delay !== undefined && !signal?.aborted) {
+          await sleep(delay);
+          continue;
+        }
+        throw new ApiError(0, "NETWORK_ERROR", NETWORK_MESSAGE);
+      }
+    }
+  });
 }
 
 async function authorizedResponse(
