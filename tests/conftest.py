@@ -25,13 +25,63 @@ from visionroute.config.settings import Settings
 
 BASE_URL = "postgresql+asyncpg://visionroute:visionroute@localhost:5433"
 TEST_DB = "visionroute_test"
+# The application must never connect as a superuser: PostgreSQL lets superusers
+# and BYPASSRLS roles skip row-level security, which would make every tenant
+# isolation assertion pass without proving anything. Some PostgreSQL images make
+# the bootstrap role a superuser (CI service containers do), so tests connect
+# through a least-privilege role that inherits the owner's object rights but
+# none of its role attributes — the same shape as the production runtime role.
+APP_ROLE = "visionroute_test_app"
+APP_PASSWORD = "visionroute_test_app"
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _app_url(db: str) -> str:
+    return f"postgresql+asyncpg://{APP_ROLE}:{APP_PASSWORD}@localhost:5433/{db}"
 
 
 def _sync_url(db: str) -> str:
     # psycopg not installed; use asyncpg through a sync driver trick is not
     # possible, so administrative statements run through psql instead.
     return f"{BASE_URL}/{db}"
+
+
+def _psql_path() -> str:
+    brew = Path("/opt/homebrew/opt/postgresql@17/bin/psql")
+    return str(brew) if brew.exists() else "psql"
+
+
+def _psql_query(sql: str, db: str = "postgres") -> str:
+    """Run a query as the owner role and return the single-value result."""
+    result = subprocess.run(  # noqa: S603 — fixed argv, test-only helper
+        [
+            _psql_path(),
+            "-h",
+            "localhost",
+            "-p",
+            "5433",
+            "-U",
+            "visionroute",
+            "-d",
+            db,
+            "-tA",
+            "-c",
+            sql,
+        ],
+        check=True,
+        capture_output=True,
+        env={**os.environ, "PGPASSWORD": "visionroute"},
+    )
+    return result.stdout.decode().strip()
+
+
+def _try_psql(sql: str, db: str = "postgres") -> bool:
+    """Run a statement, reporting failure instead of raising (optional setup)."""
+    try:
+        _psql(sql, db)
+    except subprocess.CalledProcessError:
+        return False
+    return True
 
 
 def _psql(sql: str, db: str = "postgres") -> None:
@@ -85,15 +135,43 @@ def jwt_keys(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Path]:
 def test_database_url() -> Iterator[str]:
     _psql(f"DROP DATABASE IF EXISTS {TEST_DB}")
     _psql(f"CREATE DATABASE {TEST_DB} OWNER visionroute")
-    url = _sync_url(TEST_DB)
+    owner_url = _sync_url(TEST_DB)
     subprocess.run(  # noqa: S603 — fixed argv, test-only helper
         [sys.executable, "-m", "alembic", "upgrade", "head"],
         check=True,
         cwd=REPO_ROOT,
         capture_output=True,
-        env={**os.environ, "VISIONROUTE_DATABASE_URL": url, "VISIONROUTE_DISABLE_DOTENV": "1"},
+        env={
+            **os.environ,
+            "VISIONROUTE_DATABASE_URL": owner_url,
+            "VISIONROUTE_DISABLE_DOTENV": "1",
+        },
     )
-    yield url
+    # Create the least-privilege role when the owner may create roles (CI's
+    # superuser can; a plain local role cannot) and fall back to the owner
+    # otherwise — but never to a role that would bypass RLS.
+    created = _try_psql(
+        # Built from module constants only, never from test input.
+        f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{APP_ROLE}') "  # noqa: S608
+        f"THEN CREATE ROLE {APP_ROLE} LOGIN PASSWORD '{APP_PASSWORD}' "
+        "NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE; END IF; END $$;"
+    )
+    # Membership grants the owner's privileges on its objects (tables are FORCE
+    # RLS, so policies still apply) but never its role attributes.
+    if created and _try_psql(f"GRANT visionroute TO {APP_ROLE}"):
+        yield _app_url(TEST_DB)
+        return
+    bypasses = _psql_query(
+        "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = 'visionroute'"
+    )
+    if bypasses == "t":
+        pytest.fail(
+            "The test database role bypasses row-level security, so tenant isolation "
+            f"assertions would pass without enforcing anything. Grant CREATEROLE so the "
+            f"'{APP_ROLE}' role can be created, or point the tests at a non-superuser role.",
+            pytrace=False,
+        )
+    yield owner_url
 
 
 TEST_FIELD_KEY = Fernet.generate_key().decode()
