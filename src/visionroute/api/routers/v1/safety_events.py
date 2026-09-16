@@ -146,6 +146,7 @@ async def list_safety_events(
     severity: str | None = None,
     review_status: str | None = None,
     event_type: str | None = None,
+    trip_id: uuid.UUID | None = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> SafetyEventList:
@@ -153,6 +154,8 @@ async def list_safety_events(
     conditions = [SafetyEvent.organization_id == tenant_id]
     if vehicle_id is not None:
         conditions.append(SafetyEvent.vehicle_id == vehicle_id)
+    if trip_id is not None:
+        conditions.append(SafetyEvent.trip_id == trip_id)
     if driver_id is not None:
         conditions.append(SafetyEvent.driver_id == driver_id)
     if severity is not None:

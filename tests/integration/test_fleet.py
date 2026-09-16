@@ -154,6 +154,60 @@ def test_device_and_camera_registration(client: TestClient) -> None:
     assert len(cameras) == 1
 
 
+def test_device_and_camera_update(client: TestClient) -> None:
+    owner = create_org_and_login(client, "cihaz-guncel", "o@cihaz-guncel.example")
+    other = create_org_and_login(client, "cihaz-diger", "o@cihaz-diger.example")
+    vehicle_id = client.post(
+        "/api/v1/vehicles", json={"external_id": "V-UPD"}, headers=_h(owner)
+    ).json()["id"]
+    device_id = client.post(
+        "/api/v1/devices", json={"external_id": "DEV-UPD"}, headers=_h(owner)
+    ).json()["id"]
+
+    updated = client.patch(
+        f"/api/v1/devices/{device_id}",
+        json={"status": "inactive", "vehicle_id": vehicle_id, "label": "Ön ünite"},
+        headers=_h(owner),
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["status"] == "inactive"
+    assert updated.json()["vehicle_id"] == vehicle_id
+    assert updated.json()["label"] == "Ön ünite"
+
+    # Platform-owned statuses and explicit nulls are rejected.
+    for bad in ({"status": "offline"}, {"status": None}):
+        rejected = client.patch(f"/api/v1/devices/{device_id}", json=bad, headers=_h(owner))
+        assert rejected.status_code == 422, rejected.text
+
+    camera_id = client.post(
+        "/api/v1/cameras",
+        json={"external_id": "CAM-UPD", "vehicle_id": vehicle_id},
+        headers=_h(owner),
+    ).json()["id"]
+    camera = client.patch(
+        f"/api/v1/cameras/{camera_id}",
+        json={"device_id": device_id, "status": "inactive", "vehicle_id": None},
+        headers=_h(owner),
+    )
+    assert camera.status_code == 200, camera.text
+    assert camera.json()["device_id"] == device_id
+    assert camera.json()["vehicle_id"] is None
+    assert camera.json()["status"] == "inactive"
+
+    # Another tenant can neither update the records nor attach its own vehicle.
+    foreign = client.patch(
+        f"/api/v1/devices/{device_id}", json={"status": "active"}, headers=_h(other)
+    )
+    assert foreign.status_code == 404
+    foreign_vehicle = client.post(
+        "/api/v1/vehicles", json={"external_id": "V-DIGER"}, headers=_h(other)
+    ).json()["id"]
+    cross = client.patch(
+        f"/api/v1/cameras/{camera_id}", json={"vehicle_id": foreign_vehicle}, headers=_h(owner)
+    )
+    assert cross.status_code == 404
+
+
 def test_assigning_foreign_vehicle_returns_404(client: TestClient) -> None:
     org_a = create_org_and_login(client, "carpi-a", "a@carpi.example")
     org_b = create_org_and_login(client, "carpi-b", "b@carpi.example")

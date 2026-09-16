@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Query, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from visionroute.api.deps import TenantSession, require_permission
 from visionroute.api.errors import ForbiddenError
@@ -146,6 +146,34 @@ class CameraCreate(BaseModel):
     position: str = Field(default="road", pattern="^(road|driver|cabin|rear)$")
     vehicle_id: uuid.UUID | None = None
     device_id: uuid.UUID | None = None
+
+
+def _reject_null_status(value: str | None) -> str | None:
+    # Omit the field to keep the current status; an explicit null is invalid.
+    if value is None:
+        msg = "Durum boş olamaz."
+        raise ValueError(msg)
+    return value
+
+
+class DeviceUpdate(BaseModel):
+    """Operator-settable fields; ``offline`` is reserved for the platform."""
+
+    label: str | None = Field(default=None, max_length=200)
+    status: str | None = Field(default=None, pattern="^(active|inactive)$")
+    vehicle_id: uuid.UUID | None = None
+
+    _status_not_null = field_validator("status")(_reject_null_status)
+
+
+class CameraUpdate(BaseModel):
+    """Operator-settable fields; ``obstructed``/``offline`` come from the platform."""
+
+    status: str | None = Field(default=None, pattern="^(active|inactive)$")
+    vehicle_id: uuid.UUID | None = None
+    device_id: uuid.UUID | None = None
+
+    _status_not_null = field_validator("status")(_reject_null_status)
 
 
 class CameraOut(BaseModel):
@@ -310,6 +338,19 @@ async def list_devices(
     )
 
 
+@router.patch("/devices/{device_id}", response_model=DeviceOut)
+async def update_device(
+    device_id: uuid.UUID,
+    body: DeviceUpdate,
+    db: TenantSession,
+    ctx: Annotated[RequestContext, require_permission(Permission.FLEET_MANAGE)],
+) -> DeviceOut:
+    service = FleetService(db)
+    changes = body.model_dump(exclude_unset=True)
+    device = await service.update_device(ctx, _tenant(ctx), device_id, changes=changes)
+    return _device_out(device)
+
+
 # ------------------------------------------------------------------ assignments
 
 
@@ -403,6 +444,19 @@ async def list_cameras(
 ) -> list[CameraOut]:
     service = FleetService(db)
     return [_camera_out(c) for c in await service.list_cameras(_tenant(ctx))]
+
+
+@router.patch("/cameras/{camera_id}", response_model=CameraOut)
+async def update_camera(
+    camera_id: uuid.UUID,
+    body: CameraUpdate,
+    db: TenantSession,
+    ctx: Annotated[RequestContext, require_permission(Permission.FLEET_MANAGE)],
+) -> CameraOut:
+    service = FleetService(db)
+    changes = body.model_dump(exclude_unset=True)
+    camera = await service.update_camera(ctx, _tenant(ctx), camera_id, changes=changes)
+    return _camera_out(camera)
 
 
 # ------------------------------------------------------------------ mappers
