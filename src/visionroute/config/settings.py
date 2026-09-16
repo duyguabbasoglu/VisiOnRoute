@@ -26,10 +26,13 @@ class Environment(StrEnum):
     DEVELOPMENT = "development"
     STAGING = "staging"
     PRODUCTION = "production"
+    # Public zero-cost hobby demo: production-grade validation (TLS, HTTPS,
+    # S3, SMTP, Redis) but synthetic data only (docs/operations/hobby-deployment.md).
+    DEMO = "demo"
 
     @property
     def is_production_like(self) -> bool:
-        return self in (Environment.STAGING, Environment.PRODUCTION)
+        return self in (Environment.STAGING, Environment.PRODUCTION, Environment.DEMO)
 
 
 class Settings(BaseSettings):
