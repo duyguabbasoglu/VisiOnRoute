@@ -56,7 +56,9 @@ export default defineConfig({
   retries: 0,
   timeout: 90_000,
   expect: { timeout: 15_000 },
-  reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : [["list"]],
+  // In CI the "github" reporter turns failures into check-run annotations, which
+  // are readable on the public run page without access to the raw job log.
+  reporter: process.env.CI ? [["list"], ["github"], ["html", { open: "never" }]] : [["list"]],
   use: {
     baseURL: WEB_URL,
     locale: "tr-TR",
