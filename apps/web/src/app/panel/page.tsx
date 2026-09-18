@@ -88,7 +88,7 @@ export default function OverviewPage() {
 
       {showSetup && (
         <Card className="mb-6 border-brand-100 bg-brand-50/50">
-          <SectionHeading title="Başlangıç adımları" description="VISiOnRoute'u kullanmaya başlamak için şu adımları tamamlayın." />
+          <SectionHeading title="Başlangıç adımları" description="VisiOnRoute'u kullanmaya başlamak için şu adımları tamamlayın." />
           <ol className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {steps.map((step, index) => (
               <li key={step.label}>
@@ -213,7 +213,7 @@ export default function OverviewPage() {
         <SectionHeading title="Metodoloji" />
         <p className="text-sm text-slate-600">
           Güvenlik olayları, telemetri verilerine uygulanan <strong>deterministik kurallarla</strong> üretilir. Şiddet
-          ve güven seviyeleri ayrı hesaplanır; düşük veri kalitesi olayı insan incelemesine işaretler. VISiOnRoute
+          ve güven seviyeleri ayrı hesaplanır; düşük veri kalitesi olayı insan incelemesine işaretler. VisiOnRoute
           kazaları önlediğini iddia etmez; riskli sürüş davranışlarını ve yol güvenliği sinyallerini veriye dayalı ve
           açıklanabilir biçimde görünür kılar.
         </p>

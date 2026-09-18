@@ -1,4 +1,4 @@
-"""VISiOnRoute CLI (Typer).
+"""VisiOnRoute CLI (Typer).
 
 Subcommand groups are registered per milestone:
   keys    — development JWT key generation

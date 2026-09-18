@@ -1,4 +1,4 @@
-# VISiOnRoute
+# VisiOnRoute
 
 **A Turkish-language transportation-safety SaaS that helps fleets surface risky driving
 behaviour and road-safety signals from telemetry — with every finding explainable.**
@@ -12,14 +12,14 @@ behaviour and road-safety signals from telemetry — with every finding explaina
 > deployment are real accounts on free-tier infrastructure — use synthetic data only.
 > The API runs on a free tier and may take up to a minute to wake on the first request.
 
-![VISiOnRoute public landing page](docs/images/genel-ana-sayfa.png)
+![VisiOnRoute public landing page](docs/images/genel-ana-sayfa.png)
 
-VISiOnRoute ingests vehicle telemetry, applies deterministic rules to it, and turns the
+VisiOnRoute ingests vehicle telemetry, applies deterministic rules to it, and turns the
 results into reviewable safety events, driver coaching, road-risk clusters, reports and
 KVKK (Turkish GDPR) workflows. The entire customer-facing product is in Turkish; the code,
 comments and this README are in English.
 
-> VISiOnRoute does **not** claim to prevent accidents and does not replace legal, medical,
+> VisiOnRoute does **not** claim to prevent accidents and does not replace legal, medical,
 > occupational-safety, automotive or human judgement. Every event states which rule fired,
 > which data it used, the threshold, the measured value and the confidence — so a human can
 > disagree with it.
@@ -31,7 +31,7 @@ explanations, severity and rule breakdowns, hourly activity and an exposure-norm
 driver ranking — all synthetic, all read-only. Review actions explain that they need a
 signed-in account instead of acting.*
 
-![VISiOnRoute dashboard](docs/images/panel-genel-bakis.png)
+![VisiOnRoute dashboard](docs/images/panel-genel-bakis.png)
 
 *The authenticated overview: fleet safety at a glance — open events, active trips, coaching
 workload, and the operations map. The interface is Turkish throughout; all data shown is
@@ -44,7 +44,7 @@ safety manager *which* moments deserve attention, whether a signal is trustworth
 to do next. Black-box "driver scores" make that worse: they cannot be explained to the
 driver being judged.
 
-VISiOnRoute takes the opposite approach:
+VisiOnRoute takes the opposite approach:
 
 - **Deterministic, versioned rules** (harsh braking/acceleration/cornering, speeding) — no
   LLM ever classifies numeric telemetry.

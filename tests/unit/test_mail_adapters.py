@@ -86,7 +86,7 @@ def _message(**overrides: str) -> OutgoingEmail:
     values = {
         "message_id": "<ornek-id@visionroute>",
         "from_address": "no-reply@visionroute.test",
-        "from_name": "VISiOnRoute",
+        "from_name": "VisiOnRoute",
         "to_address": "alici@ornek.example",
         "subject": "Güvenlik bildirimi: parolanız değiştirildi",
         "text_body": "Merhaba Çağrı,\nparolanız değiştirildi.\n",

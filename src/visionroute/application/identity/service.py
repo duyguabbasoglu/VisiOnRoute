@@ -568,7 +568,7 @@ class IdentityService:
             template="invitation",
             recipient=invitation.email,
             context={
-                "organization_name": organization.name if organization else "VISiOnRoute",
+                "organization_name": organization.name if organization else "VisiOnRoute",
                 "inviter_name": inviter.full_name if inviter else "Organizasyon yöneticiniz",
                 "role_label": role_label,
                 "expires_at": invitation.expires_at.isoformat(),

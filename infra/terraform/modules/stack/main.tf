@@ -1,4 +1,4 @@
-# VISiOnRoute AWS stack: VPC, RDS(+PostGIS), Redis, S3, ECR, ECS Fargate, ALB.
+# VisiOnRoute AWS stack: VPC, RDS(+PostGIS), Redis, S3, ECR, ECS Fargate, ALB.
 # Security posture: no public database, private subnets for services, least
 # privilege task roles, encryption at rest (KMS) and in transit.
 

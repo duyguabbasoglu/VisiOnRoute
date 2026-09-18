@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* VISiOnRoute görsel kimliği: güvenlik, hareketlilik, operasyonel netlik.
+/* VisiOnRoute görsel kimliği: güvenlik, hareketlilik, operasyonel netlik.
    Koyu lacivert zemin üzerinde yüksek kontrast; amber = uyarı, kırmızı = kritik. */
 @theme {
   --color-brand-50: #eff6ff;

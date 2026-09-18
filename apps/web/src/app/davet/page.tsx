@@ -112,7 +112,7 @@ export default function InvitationPage() {
       <form onSubmit={onSubmit} className="space-y-4">
         {preview.account_exists ? (
           <Alert kind="info">
-            Bu e-posta adresiyle zaten bir VISiOnRoute hesabınız var. Daveti kabul ettikten sonra
+            Bu e-posta adresiyle zaten bir VisiOnRoute hesabınız var. Daveti kabul ettikten sonra
             mevcut parolanızla giriş yapabilirsiniz.
           </Alert>
         ) : (

@@ -97,7 +97,7 @@ class Settings(BaseSettings):
     # memory: automated tests only
     mail_backend: Literal["smtp", "file", "memory"] = "file"
     mail_file_dir: Path = Path(".localdata/mail")
-    mail_from_name: str = "VISiOnRoute"
+    mail_from_name: str = "VisiOnRoute"
     mail_max_attempts: int = Field(default=8, ge=1, le=20)
     smtp_host: str = "localhost"
     smtp_port: int = 1025
@@ -113,7 +113,7 @@ class Settings(BaseSettings):
     invitation_ttl_days: int = Field(default=7, ge=1, le=30)
     password_reset_ttl_minutes: int = Field(default=30, ge=5, le=240)
     email_verification_ttl_hours: int = Field(default=48, ge=1, le=168)
-    mfa_issuer: str = "VISiOnRoute"
+    mfa_issuer: str = "VisiOnRoute"
 
     # --- Object storage (S3 / MinIO in production-like; local files for dev/tests) ---
     storage_backend: Literal["s3", "local"] = "local"

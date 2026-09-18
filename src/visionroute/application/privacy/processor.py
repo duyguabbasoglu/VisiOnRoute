@@ -72,7 +72,7 @@ _TELEMETRY_PURGE_MAX_BATCHES = 40
 _EVIDENCE_PURGE_BATCH = 500
 _MEDIA_EXTENSIONS = {"image/jpeg": "jpg", "image/png": "png", "video/mp4": "mp4"}
 
-_README = """VISiOnRoute - Kişisel veri dışa aktarma (KVKK md. 11)
+_README = """VisiOnRoute - Kişisel veri dışa aktarma (KVKK md. 11)
 
 Bu arşiv, talep tarihinde ilgili organizasyonda sizinle ilişkilendirilmiş kişisel
 verileri makine tarafından okunabilir biçimde (JSON/CSV) içerir.

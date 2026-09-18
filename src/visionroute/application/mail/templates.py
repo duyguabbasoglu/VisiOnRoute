@@ -19,7 +19,7 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 _TZ = ZoneInfo("Europe/Istanbul")
-_FOOTER = "Bu e-posta VISiOnRoute tarafından otomatik olarak gönderildi; lütfen yanıtlamayın."
+_FOOTER = "Bu e-posta VisiOnRoute tarafından otomatik olarak gönderildi; lütfen yanıtlamayın."
 
 TEMPLATES = frozenset(
     {
@@ -148,13 +148,13 @@ def _content(
         organization = _require(context, "organization_name")
         action = link("/davet")
         return _Content(
-            subject=_single_line(f"{organization} sizi VISiOnRoute'a davet etti"),
-            title="VISiOnRoute daveti",
+            subject=_single_line(f"{organization} sizi VisiOnRoute'a davet etti"),
+            title="VisiOnRoute daveti",
             paragraphs=[
                 "Merhaba,",
                 f"{_require(context, 'inviter_name')} sizi {organization} organizasyonuna "
                 f"{_require(context, 'role_label')} rolüyle davet etti.",
-                "VISiOnRoute; sürücü davranışlarını ve yol koşullarını analiz ederek "
+                "VisiOnRoute; sürücü davranışlarını ve yol koşullarını analiz ederek "
                 "riskleri görünür kılan bir ulaşım güvenliği platformudur.",
             ],
             action=("Daveti kabul et", action[1]) if action else None,
@@ -167,7 +167,7 @@ def _content(
     if template == "password_reset":
         action = link("/sifre-sifirla")
         return _Content(
-            subject="VISiOnRoute parola sıfırlama",
+            subject="VisiOnRoute parola sıfırlama",
             title="Parola sıfırlama isteği",
             paragraphs=[
                 f"Merhaba {_require(context, 'full_name')},",
@@ -183,11 +183,11 @@ def _content(
     if template == "email_verification":
         action = link("/eposta-dogrula")
         return _Content(
-            subject="VISiOnRoute e-posta adresinizi doğrulayın",
+            subject="VisiOnRoute e-posta adresinizi doğrulayın",
             title="E-posta doğrulama",
             paragraphs=[
                 f"Merhaba {_require(context, 'full_name')},",
-                "VISiOnRoute hesabınızı güvenle kullanabilmek için e-posta adresinizi doğrulayın.",
+                "VisiOnRoute hesabınızı güvenle kullanabilmek için e-posta adresinizi doğrulayın.",
             ],
             action=("E-postamı doğrula", action[1]) if action else None,
             note=(
@@ -201,7 +201,7 @@ def _content(
         if label is None:
             raise TemplateRenderError(f"Bilinmeyen güvenlik olayı: {event}")
         return _Content(
-            subject=f"VISiOnRoute güvenlik bildirimi: {label}",
+            subject=f"VisiOnRoute güvenlik bildirimi: {label}",
             title="Hesap güvenliği bildirimi",
             paragraphs=[
                 f"Merhaba {_require(context, 'full_name')},",

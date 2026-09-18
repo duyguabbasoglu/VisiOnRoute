@@ -11,9 +11,9 @@ import { CTA_STYLES } from "@/components/public-styles";
 import { SessionHint } from "@/components/SessionHint";
 
 export const metadata: Metadata = {
-  title: { absolute: "VISiOnRoute — Ulaşım güvenliği platformu" },
+  title: { absolute: "VisiOnRoute — Ulaşım güvenliği platformu" },
   description:
-    "VISiOnRoute araç telemetrisini açıklanabilir kurallarla işler; riskli sürüş davranışlarını ve yol güvenliği sinyallerini görünür kılar. Hobi demo, yalnızca sentetik veri.",
+    "VisiOnRoute araç telemetrisini açıklanabilir kurallarla işler; riskli sürüş davranışlarını ve yol güvenliği sinyallerini görünür kılar. Hobi demo, yalnızca sentetik veri.",
 };
 
 const CAPABILITIES: { icon: IconName; title: string; body: string; tags: string[] }[] = [
@@ -144,7 +144,7 @@ export default function LandingPage() {
                 Hobi demo · yalnızca sentetik veri
               </p>
               <h1 className="mt-5 text-4xl font-semibold tracking-tight text-white sm:text-5xl lg:text-[3.4rem] lg:leading-[1.05]">
-                VISiOnRoute
+                VisiOnRoute
                 <span className="mt-3 block text-2xl font-medium leading-snug text-slate-300 sm:text-3xl">
                   Riskli sürüşü ve yol güvenliği sinyallerini, büyümeden görün.
                 </span>

@@ -373,7 +373,7 @@ function SetupGuide() {
     <Card className="mt-6">
       <SectionHeading
         title="Bağlantı rehberi"
-        description="Cihaz veya telematik sağlayıcınızın VISiOnRoute'a telemetri göndermesi için adımlar."
+        description="Cihaz veya telematik sağlayıcınızın VisiOnRoute'a telemetri göndermesi için adımlar."
       />
       <ol className="list-decimal space-y-2 pl-5 text-sm text-slate-700">
         <li>Araçlar sayfasında aracı, telemetrideki kimliğiyle (dış kimlik) ekleyin.</li>

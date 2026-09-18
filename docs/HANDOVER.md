@@ -12,9 +12,11 @@ tamamlanamayan işleri, nedenlerini ve tamamlanma kriterlerini açıkça kaydede
   e-postası Mailpit'e SMTP ile ulaştı (bkz. docs/operations/demo-profile.md).
 - **Terraform**: `terraform fmt -check` ve `validate` (1.10.5, Docker imajı) staging ve
   production için başarılı. **`plan`/`apply` hiç çalıştırılmadı** (AWS kimlik bilgisi yok).
-- **GitHub**: uzak depo `duyguabbasoglu/VisiOnRoute` (public) tanımlı. Bu çalışmanın
-  itilmesinden önce CI GitHub üzerinde koşmamıştı; CI adımlarının yerel eşdeğerleri
-  çalıştırıldı.
+- **GitHub**: uzak depo `duyguabbasoglu/VisiOnRoute` (public). CI **koşmuştu ve
+  dördü de başarısızdı** (sürüm commit'i dâhil); önceki devir kaydının "hiç koşmadı"
+  ifadesi yanlıştı. Kök neden bulundu ve düzeltildi: CI'ın Postgres servis imajı
+  rolü superuser yapıyor, superuser RLS'i atlıyor ve kiracı izolasyonu testleri
+  yerelde geçerken CI'da düşüyordu (bkz. docs/PROGRESS.md).
 - **Ücretsiz hobi dağıtımı**: profil, `render.yaml` blueprint'i ve adım adım belge
   hazır (docs/operations/hobby-deployment.md). **Hiçbir sağlayıcıda kaynak
   oluşturulmadı**: Render/Neon/Upstash/Backblaze/Brevo hesap girişleri kullanıcıya ait.
@@ -64,7 +66,7 @@ tamamlanamayan işleri, nedenlerini ve tamamlanma kriterlerini açıkça kaydede
 
 ## NEXT AGENT PROMPT INPUT
 
-VISiOnRoute: Türkçe ulaşım güvenliği SaaS'ı. Modüler monolit
+VisiOnRoute: Türkçe ulaşım güvenliği SaaS'ı. Modüler monolit
 `src/visionroute/{domain,application,infrastructure,api,worker,scheduler,cli}`
 (import-linter sınırları) + `apps/web` (Next.js 15.5, strict TS, Zod) +
 `infra/terraform` + `infra/docker`.

@@ -1,8 +1,8 @@
-# CLAUDE.md — VISiOnRoute
+# CLAUDE.md — VisiOnRoute
 
 ## Mission
 
-VISiOnRoute is a fully Turkish transportation-safety SaaS: it analyzes driver
+VisiOnRoute is a fully Turkish transportation-safety SaaS: it analyzes driver
 behavior and road conditions in near-real-time and makes risks visible before
 they escalate. It never claims to prevent accidents and never replaces legal,
 medical, occupational-safety, automotive, or human judgment.

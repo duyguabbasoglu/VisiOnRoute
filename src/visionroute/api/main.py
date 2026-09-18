@@ -83,7 +83,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             logger.info("api_stopped")
 
     app = FastAPI(
-        title="VISiOnRoute API",
+        title="VisiOnRoute API",
         description="Sürücü davranışlarını ve yol koşullarını analiz eden ulaşım "
         "güvenliği platformu API'si.",
         version=__version__,
