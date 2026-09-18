@@ -173,3 +173,12 @@ jobs:
       - name: End-to-end tests (real API, worker and production web build)
         working-directory: apps/web
         run: pnpm e2e
+      - name: Upload Playwright report and traces
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-report
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
+          retention-days: 7
