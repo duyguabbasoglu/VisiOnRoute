@@ -47,8 +47,14 @@ yazılım taraması yok (docs/HANDOVER.md).
 | Güvenlik taramaları | ✅ | bandit, pip-audit ve `pnpm audit --prod` temiz (CI'da engelleyici) |
 | Üretim imajları | ✅ | API ve web imajları derlendi; compose duman testi |
 | Terraform | ⚠️ | fmt + validate ✅; plan/apply ❌ (kimlik bilgisi yok) |
-| CI/CD | ⚠️ | İş akışları yazıldı ve adımlar yerelde çalıştırıldı; GitHub'da koşmadı |
+| CI/CD | ⚠️ | Backend/frontend/e2e/gitleaks/terraform işleri GitHub'da koşuyor; daha önce her koşu RLS-superuser sorunuyla düşüyordu, düzeltildi. CD (AWS) hiç çalıştırılmadı |
 | Staging dağıtımı | ❌ | Kullanıcı eylemi (docs/operations/deployment.md) |
+
+### Test ortamı notu
+
+Testler artık RLS'i atlamayan (NOSUPERUSER/NOBYPASSRLS) en az yetkili bir rolle
+bağlanır; superuser rolle çalıştırıldığında kiracı izolasyonu iddiaları boş yere
+geçtiği için bu bir doğruluk koşuludur.
 
 ## Operasyon kriterleri
 

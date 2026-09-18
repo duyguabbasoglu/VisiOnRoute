@@ -29,7 +29,7 @@ export function Wordmark({ tone = "light" }: { tone?: "light" | "dark" }) {
     <span className="flex items-center gap-2.5">
       <LogoMark />
       <span className={`text-lg font-semibold tracking-tight ${tone === "light" ? "text-white" : "text-ink-900"}`}>
-        VISiOnRoute
+        VisiOnRoute
       </span>
     </span>
   );
@@ -71,7 +71,7 @@ export function PublicHeader({ wide = false }: { wide?: boolean }) {
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-ink-900">
       <div className={`mx-auto flex h-16 ${wide ? "max-w-7xl" : "max-w-6xl"} items-center justify-between gap-3 px-4 sm:px-6`}>
-        <Link href="/" aria-label="VISiOnRoute ana sayfa" className="rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50">
+        <Link href="/" aria-label="VisiOnRoute ana sayfa" className="rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50">
           <Wordmark />
         </Link>
         <nav aria-label="Genel menü" className="hidden items-center gap-1 lg:flex">

@@ -4,8 +4,8 @@ import { Providers } from "@/lib/providers";
 
 export const metadata: Metadata = {
   title: {
-    default: "VISiOnRoute",
-    template: "%s | VISiOnRoute",
+    default: "VisiOnRoute",
+    template: "%s | VisiOnRoute",
   },
   description:
     "Sürücü davranışlarını ve yol koşullarını gerçek zamanlı analiz ederek riskleri oluşmadan görünür kılan ulaşım güvenliği platformu.",

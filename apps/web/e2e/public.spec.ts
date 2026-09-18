@@ -15,7 +15,7 @@ test("anonim ziyaretçi ana sayfada ürün tanıtımını görür, girişe yönl
   const apiCalls = trackApiCalls(page);
   await page.goto("/");
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("VISiOnRoute");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("VisiOnRoute");
   await expect(page.getByText("Hobi demo · yalnızca sentetik veri").first()).toBeVisible();
   const main = page.getByRole("main");
   await expect(main.getByRole("link", { name: /Demoyu keşfet/ }).first()).toBeVisible();

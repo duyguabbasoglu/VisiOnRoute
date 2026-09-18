@@ -1,7 +1,7 @@
 [project]
 name = "visionroute"
 version = "0.1.0"
-description = "VISiOnRoute — Türkçe ulaşım güvenliği platformu (transportation-safety SaaS)"
+description = "VisiOnRoute — Türkçe ulaşım güvenliği platformu (transportation-safety SaaS)"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 license = { text = "Proprietary" }

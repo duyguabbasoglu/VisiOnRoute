@@ -263,3 +263,27 @@ harita eksikti; README depoda tek satıra inmişti.
   Cloudflare R2 ücretsiz katmanı bile kart istediği için nesne depolama tercihi
   Backblaze B2 olarak belirlendi. Sağlayıcı hesapları kullanıcı girişi bekliyor.
 
+### CI'ın hiç yeşil olmadığının tespiti ve düzeltilmesi
+
+Depo GitHub'a itildiğinde CI'ın **dört kez de başarısız** olduğu (sürüm commit'i
+dâhil) görüldü; devir kaydı "CI hiç koşmadı" diyordu. Hata her seferinde
+"Integration & security tests" adımındaydı ve yerelde tekrarlanamıyordu.
+
+Kök neden: CI'ın kullandığı Postgres servis imajı bootstrap rolünü **superuser**
+yapar; PostgreSQL'de superuser rolleri satır düzeyi güvenliği (RLS) atlar. Bu
+nedenle `test_rls_blocks_unfiltered_cross_tenant_query` beklenen 0 yerine 183
+satır gördü ve e-posta kuyruğu testi başka kiracının satırını okudu. Yerel
+Homebrew rolü superuser olmadığı için aynı testler yerelde geçiyordu: suite
+CI'da yerelde olduğundan daha azını kanıtlıyordu.
+
+Düzeltme: testler artık üretim çalışma rolüne benzeyen, sahip rolünün nesne
+yetkilerini devralan ama rol niteliklerini almayan (NOSUPERUSER, NOBYPASSRLS)
+en az yetkili bir rolle bağlanır. Rol oluşturulamayan ortamlarda, mevcut rolün
+RLS'i atlamadığı doğrulanırsa ona düşülür; atlıyorsa test açıkça hata verir.
+Linux konteynerinde superuser sahipli veritabanına karşı doğrulandı: önce 2
+başarısız, sonra 139 başarılı.
+
+Ayrıca CI backend işine Redis servisi eklendi (hız sınırlama testi gerçek
+Redis'e karşı çalışır) ve gitleaks yapılandırmasıyla e-posta şablonu testindeki
+sahte davet belirteci beyaz listeye alındı.
+

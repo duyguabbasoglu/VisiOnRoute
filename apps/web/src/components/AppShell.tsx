@@ -145,7 +145,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         <div className="flex items-start justify-between px-5 py-5">
           <Link href="/panel" className="block">
-            <span className="text-lg font-semibold tracking-tight text-white">VISiOnRoute</span>
+            <span className="text-lg font-semibold tracking-tight text-white">VisiOnRoute</span>
             <span className="mt-0.5 block text-xs text-slate-400">Ulaşım Güvenliği</span>
           </Link>
           <button

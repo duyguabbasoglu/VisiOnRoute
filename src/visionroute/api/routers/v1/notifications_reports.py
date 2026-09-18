@@ -388,7 +388,7 @@ async def send_test_webhook(
             organization_id=_tenant(ctx),
             endpoint_id=endpoint.id,
             event_type="webhook.test",
-            payload={"message": "VISiOnRoute test bildirimi", "sent_by": ctx.actor_label},
+            payload={"message": "VisiOnRoute test bildirimi", "sent_by": ctx.actor_label},
         )
     )
     return {"message": "Test teslimatı kuyruğa alındı."}

@@ -1,6 +1,6 @@
 # Anahtar Rotasyonu / Key Rotation
 
-Bu belge VISiOnRoute'taki tüm kriptografik anahtarların üretim, saklama ve
+Bu belge VisiOnRoute'taki tüm kriptografik anahtarların üretim, saklama ve
 rotasyon prosedürlerini tanımlar. Üretimde tüm değerler **AWS Secrets
 Manager**'da tutulur ve ECS görev tanımına ortam değişkeni olarak enjekte
 edilir. Hiçbir anahtar depoya, loglara veya veritabanına yazılmaz.

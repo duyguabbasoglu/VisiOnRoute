@@ -52,7 +52,7 @@ export default function RegisterPage() {
   return (
     <AuthCard
       title="Organizasyon oluşturun"
-      description="Filonuz için VISiOnRoute hesabı açın. 30 günlük deneme ile başlarsınız."
+      description="Filonuz için VisiOnRoute hesabı açın. 30 günlük deneme ile başlarsınız."
       footer={
         <p className="text-slate-600">
           Zaten hesabınız var mı?{" "}

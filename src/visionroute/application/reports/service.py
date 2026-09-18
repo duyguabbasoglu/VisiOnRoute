@@ -155,8 +155,8 @@ class ReportService:
         confirmed = sum(1 for e in events if e.review_status == "confirmed")
 
         pdf = FPDF()
-        pdf.set_title("VISiOnRoute Yönetici Güvenlik Raporu")
-        pdf.set_creator("VISiOnRoute")
+        pdf.set_title("VisiOnRoute Yönetici Güvenlik Raporu")
+        pdf.set_creator("VisiOnRoute")
         font_dir = find_unicode_font_dir(self._pdf_font_dir)
         if font_dir is not None:
             pdf.add_font("DejaVu", "", str(font_dir / REGULAR_FONT))
@@ -178,7 +178,7 @@ class ReportService:
             pdf.set_font(family, "", 9)
             pdf.multi_cell(0, 5, text(value), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-        line("VISiOnRoute — Yönetici Güvenlik Raporu", size=16, bold=True, height=10)
+        line("VisiOnRoute — Yönetici Güvenlik Raporu", size=16, bold=True, height=10)
         line(f"Organizasyon: {meta.organization_name}")
         line(f"Üretim zamanı (UTC): {meta.generated_at.strftime('%Y-%m-%d %H:%M')}")
         line(f"Dönem: son {window_days} gün")

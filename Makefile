@@ -1,4 +1,4 @@
-# VISiOnRoute developer entrypoints.
+# VisiOnRoute developer entrypoints.
 # `make bootstrap && make dev` must be enough for a new developer.
 
 PG_DATA    := .localdata/pg

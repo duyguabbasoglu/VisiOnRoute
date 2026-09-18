@@ -1,5 +1,5 @@
 /**
- * Typed API client for VISiOnRoute.
+ * Typed API client for VisiOnRoute.
  *
  * - The access token lives in memory only (never localStorage). The refresh
  *   token is an HttpOnly cookie used to mint new access tokens.

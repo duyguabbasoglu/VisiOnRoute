@@ -137,7 +137,7 @@ export default function LoginPage() {
   return (
     <AuthCard
       title="Giriş yapın"
-      description="VISiOnRoute ulaşım güvenliği platformu"
+      description="VisiOnRoute ulaşım güvenliği platformu"
       footer={
         <div className="flex flex-wrap justify-between gap-2">
           <Link href="/sifremi-unuttum" className="text-brand-700 hover:underline">

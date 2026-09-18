@@ -4,7 +4,7 @@ export default function NotFound() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-ink-900 px-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-8 text-center shadow-xl">
-        <p className="text-sm font-semibold text-brand-600">VISiOnRoute</p>
+        <p className="text-sm font-semibold text-brand-600">VisiOnRoute</p>
         <h1 className="mt-2 text-2xl font-semibold text-ink-900">Sayfa bulunamadı</h1>
         <p className="mt-2 text-sm text-slate-600">
           Aradığınız sayfa taşınmış veya hiç var olmamış olabilir.

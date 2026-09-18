@@ -23,7 +23,7 @@ export function AuthCard({
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl sm:p-8">
         <div className="mb-6">
           <Link href="/" className="text-sm font-semibold tracking-wide text-brand-700">
-            VISiOnRoute
+            VisiOnRoute
           </Link>
           <h1 className="mt-2 text-2xl font-semibold text-ink-900">{title}</h1>
           {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
@@ -32,7 +32,7 @@ export function AuthCard({
         {footer && <div className="mt-6 border-t border-slate-100 pt-4 text-sm">{footer}</div>}
       </div>
       <p className="mt-6 max-w-md text-center text-xs text-slate-400">
-        VISiOnRoute riskli sürüş davranışlarını ve yol güvenliği sinyallerini görünür kılar; kazaları
+        VisiOnRoute riskli sürüş davranışlarını ve yol güvenliği sinyallerini görünür kılar; kazaları
         önlediğini iddia etmez ve insan değerlendirmesinin yerini almaz.
       </p>
     </main>

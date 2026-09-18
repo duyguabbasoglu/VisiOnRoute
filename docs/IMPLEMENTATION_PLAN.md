@@ -1,11 +1,11 @@
-# VISiOnRoute — Uygulama Planı / Implementation Plan
+# VisiOnRoute — Uygulama Planı / Implementation Plan
 
 > Durum takibi için `docs/PROGRESS.md`, kararlar için `docs/DECISIONS.md`,
 > tamamlanamayan işler için `docs/HANDOVER.md` dosyalarına bakın.
 
 ## Ürün özeti
 
-VISiOnRoute, sürücü davranışlarını ve yol koşullarını gerçek zamanlı analiz ederek
+VisiOnRoute, sürücü davranışlarını ve yol koşullarını gerçek zamanlı analiz ederek
 riskleri oluşmadan görünür kılan, tamamen Türkçe bir ulaşım güvenliği platformudur.
 Platform kazaları önlediğini iddia etmez; hukuki, tıbbi, iş güvenliği, otomotiv veya
 insan kararlarının yerine geçmez.

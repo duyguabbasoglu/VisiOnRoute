@@ -1,6 +1,6 @@
 # Tehdit Modeli / Threat Model
 
-Kapsam: VISiOnRoute API, web uygulaması, worker, scheduler, veri alım hattı, nesne
+Kapsam: VisiOnRoute API, web uygulaması, worker, scheduler, veri alım hattı, nesne
 depolama, e-posta, canlı akış, AWS altyapısı. Yöntem: STRIDE + veri akışı bazlı.
 Yaşayan bir belgedir; her yeni yüzeyde güncellenir. **Yalnızca kodda veya altyapıda
 gerçekten bulunan kontroller "kontrol" olarak listelenir**; eksikler "kabul edilen

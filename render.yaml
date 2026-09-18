@@ -17,7 +17,8 @@ services:
     dockerContext: .
     dockerCommand: visionroute hobby serve
     healthCheckPath: /health/ready
-    autoDeploy: false
+    # Deploy each main commit only after its GitHub Actions checks pass.
+    autoDeployTrigger: checksPass
     envVars:
       # --- mode: production-grade validation, synthetic data only ---
       - key: VISIONROUTE_ENVIRONMENT

@@ -1,6 +1,6 @@
 # Veri Alımı (Ingestion) API
 
-Bu belge, VISiOnRoute'a veri gönderen entegratörler içindir. Tüm alım
+Bu belge, VisiOnRoute'a veri gönderen entegratörler içindir. Tüm alım
 uçları makineler arası kimlik doğrulama (API anahtarı) kullanır.
 
 ## Kimlik doğrulama

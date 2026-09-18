@@ -1,6 +1,6 @@
 # Sıfır maliyetli demo profili
 
-Amaç: VISiOnRoute'u bulut hesabı veya ücretli kaynak olmadan uçtan uca göstermek.
+Amaç: VisiOnRoute'u bulut hesabı veya ücretli kaynak olmadan uçtan uca göstermek.
 Profil tamamen yerelde, Docker Compose ile çalışır. **Tüm demo telemetrisi
 sentetiktir** (`data_origin=synthetic`, `environment=demo`) ve gerçek kanıt olarak
 kullanılamaz.

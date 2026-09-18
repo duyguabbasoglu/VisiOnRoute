@@ -197,7 +197,7 @@ class NotificationService:
                     content=body,
                     headers={
                         "Content-Type": "application/json",
-                        "User-Agent": "VISiOnRoute-Webhook/1.0",
+                        "User-Agent": "VisiOnRoute-Webhook/1.0",
                         "X-VisiOnRoute-Signature": signature,
                         "X-VisiOnRoute-Delivery": str(delivery.id),
                     },

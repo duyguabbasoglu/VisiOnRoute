@@ -1,6 +1,6 @@
 # Zero-cost hobby deployment (public demo)
 
-> **Hobby / non-commercial demo only.** This profile exists so VISiOnRoute can be
+> **Hobby / non-commercial demo only.** This profile exists so VisiOnRoute can be
 > tried publicly without paying for infrastructure. It is **not** the production
 > architecture (see [deployment.md](deployment.md) for the AWS/Terraform stack) and
 > must only ever hold **synthetic** data (`data_origin=synthetic`, `environment=demo`).
@@ -94,9 +94,26 @@ newlines or with literal `\n`.
    `API_PROXY_TARGET=https://<render-service>.onrender.com`,
    `NEXT_PUBLIC_API_URL=` (empty) and `NEXT_PUBLIC_DEMO_MODE=true` (shows the
    synthetic-data banner). Deploy.
-7. **Verify**: `https://<render-service>.onrender.com/health/ready` returns
-   `{"status":"ok"}`; register on the Vercel URL; the verification e-mail arrives;
-   seed synthetic telemetry with the simulator against the public URL.
+7. **Verify**: run the live smoke test, which checks readiness, the web app, that
+   CORS rejects a foreign origin, registration and login through the same-origin
+   proxy, an authenticated write, and rate limiting:
+
+   ```bash
+   scripts/hobby/smoke.sh https://<vercel-project>.vercel.app https://<render-service>.onrender.com
+   ```
+
+   It registers a throwaway organisation, so only ever point it at the demo.
+   Then check by hand what a script cannot: the verification e-mail arrives
+   (Brevo), evidence upload and download work (B2 signed URLs), live operations
+   stream, and seed synthetic telemetry with the simulator against the public URL.
+
+## Continuous deployment
+
+- **API (Render)**: `autoDeployTrigger: checksPass` in `render.yaml`. Render deploys a
+  commit on `main` only after all of its GitHub Actions checks pass; a red CI run
+  never reaches the demo. Manual deploys from the Render dashboard still work.
+- **Web (Vercel)**: every push to `main` builds and deploys automatically (Vercel's
+  Git integration; it does not wait for CI).
 
 ## Free-tier limitations (honest list)
 
