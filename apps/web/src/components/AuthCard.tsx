@@ -22,7 +22,7 @@ export function AuthCard({
       </div>
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl sm:p-8">
         <div className="mb-6">
-          <Link href="/giris" className="text-sm font-semibold tracking-wide text-brand-700">
+          <Link href="/" className="text-sm font-semibold tracking-wide text-brand-700">
             VISiOnRoute
           </Link>
           <h1 className="mt-2 text-2xl font-semibold text-ink-900">{title}</h1>

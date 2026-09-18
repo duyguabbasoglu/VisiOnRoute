@@ -54,3 +54,6 @@ test-results/
 
 # Local service artifacts
 dump.rdb
+
+# Generated from node_modules/maplibre-gl by apps/web/scripts/copy-maplibre-worker.mjs
+apps/web/public/maplibre/
