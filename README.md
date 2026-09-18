@@ -3,6 +3,17 @@
 **A Turkish-language transportation-safety SaaS that helps fleets surface risky driving
 behaviour and road-safety signals from telemetry — with every finding explainable.**
 
+**Live demo: <https://visionroute.vercel.app>** — public landing page, a read-only
+[demo dashboard](https://visionroute.vercel.app/demo), and self-service registration.
+
+> **The public demo uses synthetic data only.** The `/demo` dashboard renders fixed,
+> fictional fixtures (a made-up fleet with `DMO` plates and pseudonymous drivers); it never
+> calls the API and shows no tenant data. Organisations you register on the hobby
+> deployment are real accounts on free-tier infrastructure — use synthetic data only.
+> The API runs on a free tier and may take up to a minute to wake on the first request.
+
+![VISiOnRoute public landing page](docs/images/genel-ana-sayfa.png)
+
 VISiOnRoute ingests vehicle telemetry, applies deterministic rules to it, and turns the
 results into reviewable safety events, driver coaching, road-risk clusters, reports and
 KVKK (Turkish GDPR) workflows. The entire customer-facing product is in Turkish; the code,
@@ -13,10 +24,18 @@ comments and this README are in English.
 > which data it used, the threshold, the measured value and the confidence — so a human can
 > disagree with it.
 
+![Public demo dashboard with synthetic data](docs/images/genel-demo-panel.png)
+
+*Public demo dashboard (`/demo`): KPIs, operations map, recent events with rule
+explanations, severity and rule breakdowns, hourly activity and an exposure-normalised
+driver ranking — all synthetic, all read-only. Review actions explain that they need a
+signed-in account instead of acting.*
+
 ![VISiOnRoute dashboard](docs/images/panel-genel-bakis.png)
 
-*Overview: fleet safety at a glance — open events, active trips, coaching workload, and the
-operations map. The interface is Turkish throughout; all data shown is synthetic.*
+*The authenticated overview: fleet safety at a glance — open events, active trips, coaching
+workload, and the operations map. The interface is Turkish throughout; all data shown is
+synthetic.*
 
 ## The problem
 
@@ -52,6 +71,7 @@ VISiOnRoute takes the opposite approach:
 | Notifications | Severity-based rules, in-app notifications, HMAC-signed webhooks with retries, dead-letter and delivery history |
 | Privacy (KVKK) | Data-subject export and erasure requests, retention policy per data category, rate-limited and audited |
 | SaaS | Plans, trials, vehicle/user limits enforced server-side, daily usage metering, platform-admin screens |
+| Public site | Product landing page and a read-only `/demo` dashboard rendered from deterministic synthetic fixtures (no API calls, no tenant data) |
 
 Deliberately **not** built (and never faked in the UI): automatic face/licence-plate
 anonymisation, malware scanning of uploads, a payment provider, and MQTT/Kafka ingestion
@@ -123,7 +143,7 @@ make e2e                                      # Playwright against a real API, w
 ```
 
 Current state on this tree: **253 backend tests** (unit, integration, security, contract;
-1 skipped without a local MinIO/DejaVu environment), **15 Vitest** unit tests, **21 Playwright
+1 skipped without a local MinIO/DejaVu environment), **22 Vitest** unit tests, **27 Playwright
 end-to-end tests**, **17 Alembic migrations** verified up → down → up with a clean
 `alembic check`. Ruff, mypy strict, import-linter, Bandit, pip-audit and `pnpm audit --prod`
 all run in CI and are blocking.

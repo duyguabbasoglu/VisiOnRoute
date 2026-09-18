@@ -44,6 +44,8 @@ export interface FleetMapData {
 
 export type MapSelection = { kind: "vehicle" | "event" | "risk" | "geofence"; id: string };
 
+const MAPLIBRE_WORKER_URL = "/maplibre/maplibre-gl-worker.mjs";
+
 const TURKEY_CENTER: [number, number] = [35.2, 39.0];
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -170,6 +172,9 @@ export function FleetMap({
       }
       const maplibregl = await import("maplibre-gl");
       if (disposed || !container.current) return;
+      // Bundling breaks MapLibre's import.meta.url worker lookup; the build
+      // copies the matching worker to public/maplibre (scripts/copy-maplibre-worker.mjs).
+      maplibregl.setWorkerUrl(MAPLIBRE_WORKER_URL);
       let map: MapLibreMap;
       try {
         map = new maplibregl.Map({
