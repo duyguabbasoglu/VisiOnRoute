@@ -116,29 +116,32 @@ export async function waitForFirstEvent(request: APIRequestContext, token: strin
   return eventId;
 }
 
+/** POST that must succeed; a failure names the request and shows the API's answer. */
+async function postOk<T>(request: APIRequestContext, path: string, token: string, data: unknown): Promise<T> {
+  const response = await request.post(`${API_URL}${path}`, { ...bearer(token), data });
+  const body = await response.text();
+  expect(response.ok(), `POST ${path} -> ${response.status()}: ${body}`).toBeTruthy();
+  return JSON.parse(body) as T;
+}
+
 /** Tenant fixture through the public API: vehicle, data source, ingest key, one event. */
 export async function seedEventViaApi(request: APIRequestContext, token: string): Promise<string> {
-  const auth = bearer(token);
   const vehicle = unique("34API").toUpperCase();
   const sourceKey = unique("kaynak").toLowerCase();
-  expect((await request.post(`${API_URL}/api/v1/vehicles`, { ...auth, data: { external_id: vehicle } })).ok()).toBeTruthy();
-  expect(
-    (
-      await request.post(`${API_URL}/api/v1/integrations/data-sources`, {
-        ...auth,
-        data: { name: "API kaynağı", source_key: sourceKey, kind: "rest" },
-      })
-    ).ok(),
-  ).toBeTruthy();
-  const client = (await (
-    await request.post(`${API_URL}/api/v1/integrations/clients`, { ...auth, data: { name: "E2E cihaz" } })
-  ).json()) as { id: string };
-  const issued = (await (
-    await request.post(`${API_URL}/api/v1/integrations/clients/${client.id}/tokens`, {
-      ...auth,
-      data: { scopes: ["ingest:write"] },
-    })
-  ).json()) as { api_key: string };
-  await ingestHarshBraking(request, issued.api_key, sourceKey, vehicle);
+  await postOk(request, "/api/v1/vehicles", token, { external_id: vehicle });
+  await postOk(request, "/api/v1/integrations/data-sources", token, {
+    name: "API kaynağı",
+    source_key: sourceKey,
+    kind: "rest",
+  });
+  const client = await postOk<{ id: string }>(request, "/api/v1/integrations/clients", token, { name: "E2E cihaz" });
+  const issued = await postOk<{ api_key?: string }>(
+    request,
+    `/api/v1/integrations/clients/${client.id}/tokens`,
+    token,
+    { scopes: ["ingest:write"] },
+  );
+  expect(issued.api_key, "API anahtarı yanıtında api_key yok").toBeTruthy();
+  await ingestHarshBraking(request, issued.api_key ?? "", sourceKey, vehicle);
   return waitForFirstEvent(request, token);
 }
