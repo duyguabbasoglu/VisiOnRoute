@@ -98,7 +98,8 @@ async def get_ingest_session(
             raise
 
 
-IngestSession = Annotated[AsyncSession, Depends(get_ingest_session)]
+# Commit before the response is sent (see TenantSession in api/deps.py).
+IngestSession = Annotated[AsyncSession, Depends(get_ingest_session, scope="function")]
 
 
 def ingest_context(principal: IngestPrincipal, request: Request) -> RequestContext:

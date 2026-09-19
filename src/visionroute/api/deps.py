@@ -231,8 +231,12 @@ async def get_tenant_session(request: Request, ctx: CurrentContext) -> AsyncIter
         yield session
 
 
-PlatformSession = Annotated[AsyncSession, Depends(get_platform_session)]
-TenantSession = Annotated[AsyncSession, Depends(get_tenant_session)]
+# scope="function": the session commits (and releases its connection) before
+# the response is sent. With FastAPI's default request scope the commit runs
+# after the response, so a client could act on a 201 whose row is not yet
+# visible to its next request.
+PlatformSession = Annotated[AsyncSession, Depends(get_platform_session, scope="function")]
+TenantSession = Annotated[AsyncSession, Depends(get_tenant_session, scope="function")]
 
 
 def require_permission(permission: Permission) -> Any:
