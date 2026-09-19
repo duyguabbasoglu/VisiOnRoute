@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { z } from "zod";
+import { BrandLogo } from "@/components/BrandLogo";
 import { DemoModeBanner, ServiceStatusBanner } from "@/components/ServiceStatus";
 import { apiFetch, errorMessage } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -144,9 +145,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         className={`${menuOpen ? "flex" : "hidden"} fixed inset-y-0 left-0 z-40 w-64 flex-col bg-ink-900 text-slate-100 md:sticky md:top-0 md:flex md:h-screen`}
       >
         <div className="flex items-start justify-between px-5 py-5">
-          <Link href="/panel" className="block">
-            <span className="text-lg font-semibold tracking-tight text-white">VisiOnRoute</span>
-            <span className="mt-0.5 block text-xs text-slate-400">Ulaşım Güvenliği</span>
+          <Link href="/panel" aria-label="VisiOnRoute panel ana sayfası" className="block rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50">
+            <BrandLogo size="lg" plate />
+            <span className="mt-2 block text-xs text-slate-400">Ulaşım Güvenliği</span>
           </Link>
           <button
             className="rounded-md px-2 py-1 text-sm text-slate-300 hover:bg-ink-700 md:hidden"
@@ -221,6 +222,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             Menü
           </button>
+          <Link href="/panel" aria-label="VisiOnRoute panel ana sayfası" className="md:hidden">
+            <BrandLogo variant="icon" size="sm" />
+          </Link>
           <nav aria-label="Sayfa yolu" className="min-w-0 flex-1 truncate text-sm text-slate-500">
             {current?.group && <span>{current.group}</span>}
             {current?.group && <span className="mx-1.5 text-slate-300">/</span>}

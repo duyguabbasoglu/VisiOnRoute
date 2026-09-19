@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BrandLogo } from "@/components/BrandLogo";
 import type { ReactNode } from "react";
 import { DemoModeBanner, ServiceStatusBanner } from "@/components/ServiceStatus";
 
@@ -22,8 +23,8 @@ export function AuthCard({
       </div>
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl sm:p-8">
         <div className="mb-6">
-          <Link href="/" className="text-sm font-semibold tracking-wide text-brand-700">
-            VisiOnRoute
+          <Link href="/" aria-label="VisiOnRoute ana sayfa" className="inline-flex rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40">
+            <BrandLogo size="lg" priority />
           </Link>
           <h1 className="mt-2 text-2xl font-semibold text-ink-900">{title}</h1>
           {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}

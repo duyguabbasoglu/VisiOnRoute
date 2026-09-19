@@ -1,5 +1,7 @@
 # VisiOnRoute
 
+<img src="apps/web/src/app/opengraph-image.png" alt="VisiOnRoute logosu" width="480">
+
 **A Turkish-language transportation-safety SaaS that helps fleets surface risky driving
 behaviour and road-safety signals from telemetry — with every finding explainable.**
 
@@ -72,6 +74,7 @@ VisiOnRoute takes the opposite approach:
 | Privacy (KVKK) | Data-subject export and erasure requests, retention policy per data category, rate-limited and audited |
 | SaaS | Plans, trials, vehicle/user limits enforced server-side, daily usage metering, platform-admin screens |
 | Public site | Product landing page and a read-only `/demo` dashboard rendered from deterministic synthetic fixtures (no API calls, no tenant data) |
+| Brand | Official logo assets and usage rules in [`docs/brand/`](docs/brand/README.md) |
 
 Deliberately **not** built (and never faked in the UI): automatic face/licence-plate
 anonymisation, malware scanning of uploads, a payment provider, and MQTT/Kafka ingestion

@@ -2,38 +2,11 @@
 
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
+import { BrandLogo } from "@/components/BrandLogo";
 import { CTA_STYLES } from "@/components/public-styles";
 import { useAuth } from "@/lib/auth";
 
 /** Shared chrome for the public landing page and the /demo showcase. */
-
-export function LogoMark({ className = "h-8 w-8" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 32 32" aria-hidden className={className}>
-      <rect width="32" height="32" rx="8" fill="#1d4ed8" />
-      <path
-        d="M7 23c3.5 0 4.5-4 8-7s6.5-4 10-4"
-        fill="none"
-        stroke="#fff"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-      />
-      <circle cx="25" cy="12" r="3" fill="#fbbf24" />
-      <circle cx="7" cy="23" r="1.8" fill="#bfdbfe" />
-    </svg>
-  );
-}
-
-export function Wordmark({ tone = "light" }: { tone?: "light" | "dark" }) {
-  return (
-    <span className="flex items-center gap-2.5">
-      <LogoMark />
-      <span className={`text-lg font-semibold tracking-tight ${tone === "light" ? "text-white" : "text-ink-900"}`}>
-        VisiOnRoute
-      </span>
-    </span>
-  );
-}
 
 const NAV_LINKS = [
   { href: "/#yetenekler", label: "Yetenekler" },
@@ -72,7 +45,7 @@ export function PublicHeader({ wide = false }: { wide?: boolean }) {
     <header className="sticky top-0 z-40 border-b border-white/10 bg-ink-900">
       <div className={`mx-auto flex h-16 ${wide ? "max-w-7xl" : "max-w-6xl"} items-center justify-between gap-3 px-4 sm:px-6`}>
         <Link href="/" aria-label="VisiOnRoute ana sayfa" className="rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50">
-          <Wordmark />
+          <BrandLogo variant="responsive" size="lg" plate priority />
         </Link>
         <nav aria-label="Genel menü" className="hidden items-center gap-1 lg:flex">
           {NAV_LINKS.map((link) => (
@@ -136,7 +109,7 @@ export function PublicFooter() {
     <footer className="border-t border-white/10 bg-ink-900 text-slate-400">
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-[1.4fr_1fr_1fr]">
         <div>
-          <Wordmark />
+          <BrandLogo plate />
           <p className="mt-4 max-w-sm text-sm leading-relaxed">
             Riskli sürüş davranışlarını ve yol güvenliği sinyallerini görünür kılar. Kazaları önlediğini iddia etmez;
             hukuki, tıbbi, iş güvenliği veya insan değerlendirmesinin yerini almaz.
