@@ -105,7 +105,32 @@ newlines or with literal `\n`.
    It registers a throwaway organisation, so only ever point it at the demo.
    Then check by hand what a script cannot: the verification e-mail arrives
    (Brevo), evidence upload and download work (B2 signed URLs), live operations
-   stream, and seed synthetic telemetry with the simulator against the public URL.
+   stream, and the in-app synthetic seed: register an organisation, verify the
+   e-mail, and click **"Sentetik demo verisi oluştur"** on `/panel`.
+
+## Synthetic demo seed (in-app)
+
+On `VISIONROUTE_ENVIRONMENT=demo` only, the verified owner/admin of an empty
+organisation sees an empty-state card on `/panel` with a one-click seed
+(`POST /api/v1/demo-data/seed`, status at `GET /api/v1/demo-data`). The seed runs
+server-side (no API key reaches the browser) and goes through the real pipeline:
+
+- `FleetService` creates one fleet, 3 vehicles with fictional `06 DMO 10x` plates,
+  4 pseudonymous drivers ("Demo Sürücü A–D") and 3 open assignments;
+- a `simulator` data source (`visionroute-demo`) receives 540 contract-compliant
+  envelopes (3 vehicles × 2 finished trips + 1 live trip on synthetic Ankara
+  routes) through `IngestionService`;
+- the worker's own processing step (`process_accepted_ingest_event`) builds
+  telemetry points, trips and rule-engine safety events (harsh braking /
+  acceleration / cornering, speeding) in time order, and road risks are rebuilt.
+
+Every envelope carries `data_origin=synthetic`, `environment=demo`; safety events
+inherit it in `details` and the API exposes it as `data_origin`, shown as a
+"Sentetik" badge. It is idempotent (advisory lock + the data source as marker):
+repeated calls return `created=false` and write nothing. Other environments answer
+403 `DEMO_DATA_UNAVAILABLE`; non-owner/admin roles 403 `DEMO_DATA_FORBIDDEN`;
+unverified e-mail 403 `EMAIL_NOT_VERIFIED`. The live trips go stale after 15
+minutes like any other idle feed; `/demo` stays the static, backend-free showcase.
 
 ## Continuous deployment
 

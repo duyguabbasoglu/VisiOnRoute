@@ -287,3 +287,22 @@ Ayrıca CI backend işine Redis servisi eklendi (hız sınırlama testi gerçek
 Redis'e karşı çalışır) ve gitleaks yapılandırmasıyla e-posta şablonu testindeki
 sahte davet belirteci beyaz listeye alındı.
 
+
+### Kimliği doğrulanmış panel için sentetik demo verisi (2026-09-19)
+
+Yeni kayıt olan bir organizasyonun paneli boş başlıyordu. Artık yalnızca
+`VISIONROUTE_ENVIRONMENT=demo` ortamında, e-postası doğrulanmış sahip/yönetici
+`/panel` üzerindeki "Paneliniz henüz boş" kartından **"Sentetik demo verisi
+oluştur"** ile organizasyonunu doldurabilir. Veri sahte API yanıtlarıyla değil,
+gerçek işlem hattıyla üretilir: `FleetService` → `IngestionService` → worker'ın
+işleme adımı (`application/telemetry/pipeline.py`, artık worker ile ortak) →
+kural motoru → yol riski yeniden hesaplama. Simülatörün rota/olay üretimi
+`domain/synthetic_telemetry.py` modülüne taşındı; CLI simülatörü de onu kullanır.
+Tüm telemetri `data_origin=synthetic`, `environment=demo` taşır; güvenlik olayları
+bu işareti `details` içinde saklar ve API `data_origin` alanıyla döndürür (arayüzde
+"Sentetik" rozeti). İşlem idempotenttir (advisory lock + veri kaynağı işareti),
+tarayıcıya API anahtarı verilmez. `/demo` statik vitrin olarak kalır.
+Testler: `tests/integration/test_demo_seed.py` (ortam/rol/doğrulama kapıları,
+idempotentlik, sentetik işaretler, panel uç noktaları, kiracı izolasyonu, worker'ın
+yeniden işlememesi), `apps/web/src/lib/demo-seed.test.ts`, `apps/web/e2e/demo-seed.spec.ts`.
+Ayrıntı: `docs/operations/hobby-deployment.md` → "Synthetic demo seed".

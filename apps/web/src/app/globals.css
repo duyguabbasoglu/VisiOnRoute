@@ -37,3 +37,13 @@ input[type="radio"] {
   border-radius: 0.75rem;
   padding: 0.75rem 2rem 0.75rem 0.875rem;
 }
+
+/* Indeterminate progress bar (synthetic demo seed). */
+@keyframes demo-progress {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}

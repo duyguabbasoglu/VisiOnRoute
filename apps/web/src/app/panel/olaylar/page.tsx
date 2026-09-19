@@ -13,6 +13,7 @@ import {
   PageHeader,
   ReviewBadge,
   SeverityBadge,
+  SyntheticBadge,
   SkeletonRows,
   formatDateTime,
 } from "@/components/ui";
@@ -116,6 +117,7 @@ export default function EventsPage() {
                   {event.occurrence_count > 1 && (
                     <span className="ml-1 text-xs text-slate-400">×{event.occurrence_count}</span>
                   )}
+                  <SyntheticBadge origin={event.data_origin} />
                 </td>
                 <td className={`${CELL} text-slate-600`}>
                   {vehicles.names.get(event.vehicle_id) ?? "—"}

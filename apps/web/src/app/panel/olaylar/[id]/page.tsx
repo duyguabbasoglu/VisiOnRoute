@@ -16,6 +16,7 @@ import {
   PageHeader,
   ReviewBadge,
   SeverityBadge,
+  SyntheticBadge,
   TextField,
   formatDateTime,
 } from "@/components/ui";
@@ -119,7 +120,12 @@ export default function EventDetailPage() {
       <PageHeader
         title={event.event_label}
         description={event.reason_tr}
-        action={<SeverityBadge severity={event.severity} label={event.severity_label} />}
+        action={
+          <span className="flex items-center">
+            <SeverityBadge severity={event.severity} label={event.severity_label} />
+            <SyntheticBadge origin={event.data_origin} />
+          </span>
+        }
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

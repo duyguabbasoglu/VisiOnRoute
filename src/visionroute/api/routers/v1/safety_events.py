@@ -65,6 +65,8 @@ class SafetyEventOut(BaseModel):
     review_status: str
     occurrence_count: int
     needs_review: bool
+    # "synthetic" for events derived from simulator/demo-seed telemetry.
+    data_origin: str | None = None
 
 
 class EvidenceOut(BaseModel):
@@ -127,7 +129,13 @@ def _to_out(e: SafetyEvent) -> SafetyEventOut:
         review_status=e.review_status,
         occurrence_count=e.occurrence_count,
         needs_review=e.needs_review,
+        data_origin=_data_origin(e),
     )
+
+
+def _data_origin(e: SafetyEvent) -> str | None:
+    value = (e.details or {}).get("data_origin")
+    return value if isinstance(value, str) else None
 
 
 def _label(event_type: str) -> str:

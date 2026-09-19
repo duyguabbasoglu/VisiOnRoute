@@ -4,10 +4,20 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
+import { DemoDataOnboarding } from "@/components/DemoDataOnboarding";
 import { FleetMap } from "@/components/FleetMap";
-import { Card, PageHeader, SectionHeading, SeverityBadge, StatTile, formatDateTime } from "@/components/ui";
+import {
+  Card,
+  PageHeader,
+  SectionHeading,
+  SeverityBadge,
+  StatTile,
+  SyntheticBadge,
+  formatDateTime,
+} from "@/components/ui";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { isDashboardEmpty } from "@/lib/demo-seed";
 import { useVehicles } from "@/lib/fleet";
 import { can } from "@/lib/permissions";
 import {
@@ -77,7 +87,15 @@ export default function OverviewPage() {
     { done: (events.data?.total ?? 0) > 0, label: "İlk güvenlik olayını inceleyin", href: "/panel/olaylar", show: canEvents },
   ].filter((step) => step.show);
   const loadingSetup = vehicles.query.isLoading || sources.isLoading || events.isLoading;
-  const showSetup = !loadingSetup && steps.length > 0 && steps.some((step) => !step.done);
+  const empty =
+    !loadingSetup &&
+    isDashboardEmpty([
+      canFleet ? vehicles.items.length : undefined,
+      canEvents ? events.data?.total : undefined,
+      canIntegrations ? sources.data?.length : undefined,
+    ]);
+  // The empty-state card carries its own guidance, so the checklist waits.
+  const showSetup = !loadingSetup && !empty && steps.length > 0 && steps.some((step) => !step.done);
 
   return (
     <div>
@@ -85,6 +103,8 @@ export default function OverviewPage() {
         title="Genel Bakış"
         description={`Hoş geldiniz${user ? `, ${user.full_name}` : ""}. Filonuzun güvenlik durumuna hızlı bir bakış.`}
       />
+
+      <DemoDataOnboarding empty={empty} />
 
       {showSetup && (
         <Card className="mb-6 border-brand-100 bg-brand-50/50">
@@ -192,6 +212,7 @@ export default function OverviewPage() {
                       <div className="min-w-0">
                         <p className="truncate text-sm text-ink-900">
                           {event.event_label} · {vehicles.names.get(event.vehicle_id) ?? "Araç"}
+                          <SyntheticBadge origin={event.data_origin} />
                         </p>
                         <p className="text-xs text-slate-500">{formatDateTime(event.occurred_at)}</p>
                       </div>

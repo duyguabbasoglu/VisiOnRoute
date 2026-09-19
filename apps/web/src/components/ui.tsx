@@ -262,6 +262,19 @@ export function Badge({
   return <span className={`rounded-full px-2 py-0.5 text-xs ${tones[tone]}`}>{children}</span>;
 }
 
+/** Marks records derived from simulator / demo-seed telemetry. */
+export function SyntheticBadge({ origin }: { origin: string | null | undefined }) {
+  if (origin !== "synthetic") return null;
+  return (
+    <span
+      title="Sentetik demo verisi — gerçek kanıt değildir"
+      className="ml-1.5 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800"
+    >
+      Sentetik
+    </span>
+  );
+}
+
 export function EmptyState({ message, action }: { message: string; action?: ReactNode }) {
   return (
     <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">

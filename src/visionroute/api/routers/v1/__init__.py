@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from visionroute.api.routers.v1.auth import router as auth_router
 from visionroute.api.routers.v1.coaching import router as coaching_router
+from visionroute.api.routers.v1.demo_data import router as demo_data_router
 from visionroute.api.routers.v1.evidence import router as evidence_router
 from visionroute.api.routers.v1.fleet import router as fleet_router
 from visionroute.api.routers.v1.ingest import router as ingest_router
@@ -36,3 +37,4 @@ router.include_router(risk_router)
 router.include_router(notifications_reports_router)
 router.include_router(privacy_router)
 router.include_router(platform_router)
+router.include_router(demo_data_router)

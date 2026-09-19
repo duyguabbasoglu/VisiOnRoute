@@ -126,6 +126,8 @@ class TelemetryService:
                 occurred_at=envelope.occurred_at,
                 latitude=payload.latitude,
                 longitude=payload.longitude,
+                data_origin=payload.data_origin,
+                environment=payload.environment,
             ),
             sample=SafetySample(
                 speed_kph=payload.speed_kph,

@@ -41,6 +41,10 @@ class PointContext:
     occurred_at: datetime
     latitude: float | None
     longitude: float | None
+    # Provenance copied from the telemetry payload (e.g. "synthetic"/"demo"),
+    # so events derived from simulator data stay marked as such.
+    data_origin: str | None = None
+    environment: str | None = None
 
 
 class SafetyEngine:
@@ -115,7 +119,7 @@ class SafetyEngine:
                 data_quality=sample.quality,
                 needs_review=hit.needs_review,
                 dedup_key=dedup_key,
-                details={"extra": hit.extra} if hit.extra else {},
+                details=_details(ctx, hit),
             )
             .on_conflict_do_update(
                 index_elements=["organization_id", "dedup_key"],
@@ -171,3 +175,12 @@ class SafetyEngine:
         )
         overrides = result.scalar_one_or_none()
         return Thresholds.from_overrides(overrides)
+
+
+def _details(ctx: PointContext, hit: RuleHit) -> dict[str, object]:
+    details: dict[str, object] = {"extra": hit.extra} if hit.extra else {}
+    if ctx.data_origin is not None:
+        details["data_origin"] = ctx.data_origin
+    if ctx.environment is not None:
+        details["environment"] = ctx.environment
+    return details

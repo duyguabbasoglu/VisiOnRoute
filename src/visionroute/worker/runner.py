@@ -26,8 +26,7 @@ from visionroute.application.notifications.service import (
     NotificationService,
 )
 from visionroute.application.privacy.processor import PrivacyProcessor
-from visionroute.application.safety.engine import SafetyEngine
-from visionroute.application.telemetry.service import TelemetryService
+from visionroute.application.telemetry.pipeline import process_accepted_ingest_event
 from visionroute.config.settings import Settings
 from visionroute.infrastructure.db.engine import build_engine, build_session_factory
 from visionroute.infrastructure.db.models.ingestion import IngestEvent
@@ -182,17 +181,9 @@ class Worker:
         if ingest_event_id is None:
             return
         ingest_event = await session.get(IngestEvent, ingest_event_id)
-        if ingest_event is None or ingest_event.status != "accepted":
+        if ingest_event is None:
             return
-        ingest_event.status = "processing"
-        processed = await TelemetryService(session).process_ingest_event(ingest_event)
-        if processed is None:
-            return
-
-        # Run the deterministic safety engine over the new telemetry point.
-        engine = SafetyEngine(session)
-        thresholds = await engine.load_thresholds(processed.context.organization_id)
-        await engine.evaluate(processed.context, processed.sample, thresholds)
+        await process_accepted_ingest_event(session, ingest_event)
 
     def _mark_retry(self, event: OutboxEvent, exc: Exception) -> None:
         event.attempts += 1

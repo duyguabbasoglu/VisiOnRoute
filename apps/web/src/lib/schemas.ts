@@ -111,6 +111,8 @@ export const safetyEventSchema = z.object({
   review_status: z.string(),
   occurrence_count: z.number(),
   needs_review: z.boolean(),
+  // "synthetic" for events derived from simulator / demo-seed telemetry.
+  data_origin: z.string().nullable().optional(),
 });
 export type SafetyEvent = z.infer<typeof safetyEventSchema>;
 
@@ -557,3 +559,27 @@ export const driverScoreSchema = z.object({
   has_sufficient_exposure: z.boolean(),
   note: z.string().nullable(),
 });
+
+export const demoDataStatusSchema = z.object({
+  available: z.boolean(),
+  seeded: z.boolean(),
+  reason: z.enum(["environment", "role", "email_unverified"]).nullable(),
+  message: z.string().nullable(),
+});
+export type DemoDataStatus = z.infer<typeof demoDataStatusSchema>;
+
+export const demoSeedResponseSchema = z.object({
+  created: z.boolean(),
+  data_origin: z.literal("synthetic"),
+  environment: z.literal("demo"),
+  summary: z.object({
+    vehicles: z.number(),
+    drivers: z.number(),
+    trips: z.number(),
+    telemetry_points: z.number(),
+    safety_events: z.number(),
+    road_risks: z.number(),
+  }),
+  message: z.string(),
+});
+export type DemoSeedResponse = z.infer<typeof demoSeedResponseSchema>;
